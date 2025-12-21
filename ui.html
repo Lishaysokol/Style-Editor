@@ -26,14 +26,21 @@
     
     /* Main Layout */
     .app { display: flex; flex-direction: column; height: 100vh; }
-    .app-main { display: flex; flex: 1; gap: 12px; padding: 12px; min-height: 0; }
+    .app-main { display: flex; flex: 1; gap: 0; padding: 12px; min-height: 0; }
     .app-footer { padding: 10px 16px 12px; background: var(--figma-color-bg); border-top: 1px solid var(--figma-color-border); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
     .app-footer-left { display: flex; align-items: center; gap: 10px; }
     .app-footer-right { display: flex; align-items: center; gap: 10px; }
     .app-footer .btn { min-height: 40px; padding: 6px 18px; border-radius: 10px; }
     .app-footer-left .btn svg { width: 22px; height: 22px; }
-    .master-panel { width: 380px; min-width: 340px; border-radius: 16px; border: 1px solid var(--figma-color-border); display: flex; flex-direction: column; flex-shrink: 0; background: var(--figma-color-bg); box-shadow: 0 12px 30px rgba(0,0,0,0.04); overflow: hidden; }
-    .detail-panel { flex: 1; display: flex; flex-direction: column; background: var(--detail-surface); border-radius: 16px; border: 1px solid var(--figma-color-border); overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.08); }
+    .master-panel { width: 380px; min-width: 380px; border-radius: 16px; border: 1px solid var(--figma-color-border); display: flex; flex-direction: column; flex-shrink: 0; background: var(--figma-color-bg); box-shadow: 0 12px 30px rgba(0,0,0,0.04); overflow: hidden; }
+    .detail-panel { flex: 1; min-width: 360px; display: flex; flex-direction: column; background: var(--detail-surface); border-radius: 16px; border: 1px solid var(--figma-color-border); overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.08); }
+    .splitter { width: 12px; cursor: default; display: flex; align-items: stretch; justify-content: center; position: relative; }
+    .splitter::after { content: ''; position: absolute; left: 50%; transform: translateX(-50%); top: 14px; bottom: 14px; width: 2px; border-radius: 999px; background: var(--figma-color-border); opacity: 0; transition: opacity 0.2s, background 0.2s; pointer-events: none; }
+    .splitter[data-ready='true']:hover::after,
+    .splitter.splitter-active::after { opacity: 1; background: var(--figma-color-border-brand); }
+    .splitter[data-ready='true'],
+    .splitter.splitter-active { cursor: col-resize; }
+    .splitter:focus-visible { outline: none; }
     
     /* Master Panel */
     .master-header { padding: 14px 18px; border-bottom: 1px solid var(--figma-color-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; min-height: 58px; }
@@ -316,6 +323,7 @@
       </div>
       <div class="styles-list" id="styles-list" role="tree" aria-label="Styles"><div class="loading">Loading...</div></div>
       </div>
+      <div class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize panels"></div>
 
       <!-- Detail Panel: Layer Editor -->
       <div class="detail-panel">
@@ -1362,6 +1370,125 @@ function resetChanges() {
         setSafetyTab(this.getAttribute('data-tab'));
       });
     });
+
+    (function setupSplitter() {
+      var masterPanel = document.querySelector('.master-panel');
+      var detailPanel = document.querySelector('.detail-panel');
+      var splitter = document.querySelector('.splitter');
+      var appMain = document.querySelector('.app-main');
+      if (!masterPanel || !detailPanel || !splitter || !appMain) return;
+      var DEFAULT_MASTER_MIN = 320;
+      var DEFAULT_DETAIL_MIN = 360;
+      var MIN_FALLBACK = 380;
+      var MAX_MASTER_RATIO = 0.45;
+      var draggingDivider = false;
+      var startX = 0;
+      var startWidth = 0;
+      var hoverTimer = null;
+      var splitterReady = false;
+
+      function computeEffectiveMins(containerWidth) {
+        var totalDefault = DEFAULT_MASTER_MIN + DEFAULT_DETAIL_MIN + splitter.offsetWidth;
+        if (containerWidth >= totalDefault) {
+          return { master: DEFAULT_MASTER_MIN, detail: DEFAULT_DETAIL_MIN };
+        }
+        var scale = Math.max(0.35, containerWidth / totalDefault);
+        return {
+          master: Math.max(MIN_FALLBACK, Math.floor(DEFAULT_MASTER_MIN * scale)),
+          detail: Math.max(MIN_FALLBACK, Math.floor(DEFAULT_DETAIL_MIN * scale))
+        };
+      }
+
+      function updatePanelMinWidths(effective) {
+        masterPanel.style.minWidth = effective.master + 'px';
+        detailPanel.style.minWidth = effective.detail + 'px';
+      }
+
+      function computeLayoutLimits() {
+        var rect = appMain.getBoundingClientRect();
+        var effective = computeEffectiveMins(rect.width);
+        var maxByDetail = rect.width - effective.detail - splitter.offsetWidth;
+        var ratioLimit = Math.max(effective.master, Math.floor(rect.width * MAX_MASTER_RATIO));
+        var maxMaster = Math.min(maxByDetail, ratioLimit);
+        if (maxMaster < effective.master) {
+          maxMaster = effective.master;
+        }
+        updatePanelMinWidths(effective);
+        return { maxMaster: maxMaster, masterMin: effective.master };
+      }
+
+      function clampWidth(width) {
+        var limits = computeLayoutLimits();
+        return Math.min(Math.max(width, limits.masterMin), limits.maxMaster);
+      }
+
+      function setMasterWidth(width) {
+        masterPanel.style.width = clampWidth(width) + 'px';
+      }
+
+      function stopDragging() {
+        if (!draggingDivider) return;
+        draggingDivider = false;
+        splitter.classList.remove('splitter-active');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+
+      function prepareSplitter() {
+        if (splitterReady) return;
+        splitterReady = true;
+        splitter.dataset.ready = 'true';
+      }
+
+      function resetSplitterReady() {
+        splitterReady = false;
+        splitter.removeAttribute('data-ready');
+      }
+
+      function handlePointerMove(evt) {
+        if (!draggingDivider) return;
+        evt.preventDefault();
+        var delta = evt.clientX - startX;
+        setMasterWidth(startWidth + delta);
+      }
+
+      document.addEventListener('pointermove', handlePointerMove);
+      document.addEventListener('pointerup', stopDragging);
+
+      splitter.addEventListener('pointerdown', function(evt) {
+        evt.preventDefault();
+        if (!splitterReady) return;
+        draggingDivider = true;
+        startX = evt.clientX;
+        startWidth = masterPanel.getBoundingClientRect().width;
+        splitter.classList.add('splitter-active');
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+      });
+
+      computeLayoutLimits();
+
+      splitter.addEventListener('pointerenter', function() {
+        if (splitterReady || draggingDivider) return;
+        if (hoverTimer) {
+          clearTimeout(hoverTimer);
+          hoverTimer = null;
+        }
+        hoverTimer = setTimeout(function() {
+          prepareSplitter();
+        }, 400);
+      });
+
+      splitter.addEventListener('pointerleave', function() {
+        if (hoverTimer) {
+          clearTimeout(hoverTimer);
+          hoverTimer = null;
+        }
+        if (!draggingDivider) {
+          resetSplitterReady();
+        }
+      });
+    })();
 
     window.onmessage = function(event) {
       var msg = event.data.pluginMessage;

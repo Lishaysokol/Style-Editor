@@ -1,4 +1,4 @@
-figma.showUI(__html__, { width: 1000, height: 780, themeColors: true });
+figma.showUI(__html__, { width: 900, height: 780, themeColors: true });
 
 var variableNameCache = {};
 var densityStorageKey = 'stylesDensity';
