@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    :root {
+      --detail-surface-dark: #252525;
+      --detail-surface-light: var(--figma-color-bg-secondary);
+      --detail-empty-text-dark: var(--figma-color-text-tertiary);
+      --detail-empty-text-light: var(--figma-color-text);
+      --detail-surface: var(--detail-surface-dark);
+      --detail-empty-text: var(--detail-empty-text-dark);
+    }
+    :root[data-theme='light'],
+    body[data-theme='light'] {
+      --detail-surface: var(--detail-surface-light);
+      --detail-empty-text: var(--detail-empty-text-light);
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme='dark']) {
+        --detail-surface: var(--detail-surface-light);
+        --detail-empty-text: var(--detail-empty-text-light);
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, system-ui, sans-serif; font-size: 14px; background: var(--figma-color-bg); color: var(--figma-color-text); overflow: hidden; line-height: 1.4; }
+    
+    /* Main Layout */
+    .app { display: flex; flex-direction: column; height: 100vh; }
+    .app-main { display: flex; flex: 1; gap: 12px; padding: 12px; min-height: 0; }
+    .app-footer { padding: 10px 16px 12px; background: var(--figma-color-bg); border-top: 1px solid var(--figma-color-border); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .app-footer-left { display: flex; align-items: center; gap: 10px; }
+    .app-footer-right { display: flex; align-items: center; gap: 10px; }
+    .app-footer .btn { min-height: 40px; padding: 6px 18px; border-radius: 10px; }
+    .app-footer-left .btn svg { width: 22px; height: 22px; }
+    .master-panel { width: 380px; min-width: 340px; border-radius: 16px; border: 1px solid var(--figma-color-border); display: flex; flex-direction: column; flex-shrink: 0; background: var(--figma-color-bg); box-shadow: 0 12px 30px rgba(0,0,0,0.04); overflow: hidden; }
+    .detail-panel { flex: 1; display: flex; flex-direction: column; background: var(--detail-surface); border-radius: 16px; border: 1px solid var(--figma-color-border); overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,0.08); }
+    
+    /* Master Panel */
+    .master-header { padding: 14px 18px; border-bottom: 1px solid var(--figma-color-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; min-height: 58px; }
+    .master-header h1 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .master-header h1 svg { opacity: 0.6; }
+    .master-header-controls { display: flex; gap: 6px; align-items: center; }
+    .density-menu { position: relative; }
+    .density-dropdown { position: absolute; top: 100%; right: 0; margin-top: 6px; background: var(--figma-color-bg); border: 1px solid var(--figma-color-border); border-radius: 10px; padding: 8px; box-shadow: 0 12px 24px rgba(0,0,0,0.12); min-width: 220px; display: none; z-index: 20; }
+    .density-menu.open .density-dropdown { display: block; }
+    .density-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: var(--figma-color-text-secondary); padding: 2px 6px 6px; }
+    .density-option { width: 100%; text-align: left; border: none; background: transparent; color: var(--figma-color-text); padding: 6px 8px; border-radius: 6px; font-size: 12px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+    .density-option + .density-option { margin-top: 2px; }
+    .density-option:hover { background: var(--figma-color-bg-secondary); }
+    .density-option.selected { background: var(--figma-color-bg-secondary); font-weight: 600; }
+    .density-section + .density-section { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--figma-color-border); }
+    .density-section { display: flex; flex-direction: column; gap: 4px; }
+    .density-indicator-option { justify-content: flex-start; gap: 8px; }
+    .density-indicator-option input[type="checkbox"] {
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      border: 1px solid var(--figma-color-border);
+      background: var(--figma-color-bg-secondary);
+      cursor: pointer;
+      position: relative;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .density-indicator-option input[type="checkbox"]::before {
+      content: '';
+      position: absolute;
+      width: 6px;
+      height: 10px;
+      border: solid white;
+      border-width: 0 2px 2px 0;
+      top: 50%;
+      left: 50%;
+      transform-origin: center;
+      transition: transform 0.2s, opacity 0.2s;
+      transform: translate(-50%, -60%) rotate(45deg) scale(0);
+      opacity: 0;
+    }
+    .density-indicator-option input[type="checkbox"]:checked {
+      border-color: var(--figma-color-bg-brand);
+      background: var(--figma-color-bg-brand);
+    }
+    .density-indicator-option input[type="checkbox"]:checked::before {
+      opacity: 1;
+      transform: translate(-50%, -60%) rotate(45deg) scale(1);
+    }
+    .master-header-controls .btn { padding: 6px 8px; min-width: 40px; min-height: 40px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; }
+    .master-header-controls .btn svg { width: 18px; height: 18px; }
+    #collapse-folders-btn svg { width: 28px; height: 28px; }
+    .count-badge { font-size: 11px; color: var(--figma-color-text-secondary); background: var(--figma-color-bg-secondary); padding: 3px 7px; border-radius: 4px; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s; }
+    .btn-secondary { background: var(--figma-color-bg-secondary); color: var(--figma-color-text); }
+    .btn-secondary:hover { background: var(--figma-color-bg-tertiary); }
+    .btn-primary { background: var(--figma-color-bg-brand); color: white; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-danger { background: var(--figma-color-bg-danger-tertiary); color: var(--figma-color-text-danger); }
+    .btn-danger:hover { background: var(--figma-color-bg-danger-secondary); }
+    .btn-sm { padding: 4px 8px; font-size: 11px; }
+    .btn-icon { padding: 5px; background: transparent; border: none; cursor: pointer; border-radius: 4px; color: var(--figma-color-text-secondary); display: flex; align-items: center; justify-content: center; }
+    .btn-icon:hover { background: var(--figma-color-bg-tertiary); color: var(--figma-color-text); }
+    .btn-icon:disabled { opacity: 0.3; cursor: not-allowed; }
+    .search-container { padding: 12px 16px; flex-shrink: 0; }
+    .search-box { width: 100%; padding: 10px 14px; border: 1px solid var(--figma-color-border); border-radius: 8px; background: var(--figma-color-bg-secondary); color: var(--figma-color-text); font-size: 13px; }
+    .search-box:focus { outline: 2px solid var(--figma-color-border-brand); border-color: transparent; }
+    .styles-list { flex: 1; overflow-y: auto; padding: 6px 12px 14px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) var(--figma-color-bg); border-bottom-left-radius: 16px; border-bottom-right-radius: 16px; }
+    .styles-list::-webkit-scrollbar { width: 10px; }
+    .styles-list::-webkit-scrollbar-track { background: var(--figma-color-bg); border-radius: 8px; }
+    .styles-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 8px; border: 2px solid var(--figma-color-bg); }
+    
+    /* Folder Tree */
+    .folder { margin-bottom: 4px; }
+    .folder-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; cursor: pointer; user-select: none; color: var(--figma-color-text-secondary); font-weight: 600; font-size: 14px; transition: background 0.15s; outline: none; }
+    .folder-header:hover { background: rgba(255,255,255,0.04); }
+    .folder-header:focus-visible { background: rgba(255,255,255,0.08); box-shadow: 0 0 0 2px var(--figma-color-border-brand); }
+    .folder-header svg { transition: transform 0.15s; flex-shrink: 0; }
+    .folder-header .chevron { width: 14px; height: 14px; opacity: 0.7; }
+    .folder-header .folder-icon { width: 18px; height: 18px; opacity: 0.8; }
+    .folder-header-main { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+    .folder-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .folder-badges { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+    .folder-badge { padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; line-height: 1; display: inline-flex; align-items: center; justify-content: center; color: white; min-width: 24px; justify-content: center; }
+    .folder-badge-linked { background: var(--figma-color-bg-brand); }
+    .folder-badge-issue { background: var(--figma-color-bg-warning-tertiary); color: var(--figma-color-text-warning); }
+    .folder-badge-other { background: var(--figma-color-bg-tertiary); color: var(--figma-color-text-secondary); }
+    .folder-header.collapsed svg.chevron { transform: rotate(-90deg); }
+    .folder-children { margin-left: 16px; border-left: 1px solid var(--figma-color-border); padding-left: 8px; }
+    .folder-children.hidden { display: none; }
+    
+    /* Style Items */
+    .style-item { display: flex; align-items: center; gap: 10px; justify-content: flex-start; padding: 10px 12px; border-radius: 10px; cursor: pointer; transition: all 0.15s; margin-bottom: 4px; border: 2px solid transparent; background: rgba(255,255,255,0); position: relative; padding-right: 56px; outline: none; }
+    .style-item:hover { background: var(--figma-color-bg-secondary); }
+    .style-item:focus-visible { background: var(--figma-color-bg-secondary); box-shadow: 0 0 0 2px var(--figma-color-border-brand); }
+    .style-item.selected { background: var(--figma-color-bg-brand-tertiary); border-color: var(--figma-color-border-brand); }
+    .style-unsaved-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--figma-color-bg-brand); flex-shrink: 0; margin-right: 6px; margin-left: 4px; }
+    .swatch-stack { position: relative; width: 24px; height: 24px; flex-shrink: 0; }
+    .swatch-stack .swatch-layer { position: absolute; border-radius: 3px; border: 1px solid var(--figma-color-border); }
+    .swatch-single { width: 24px; height: 24px; border-radius: 5px; border: 1px solid var(--figma-color-border); flex-shrink: 0; }
+    .style-info { flex: 1; min-width: 0; }
+    .style-name { font-weight: 500; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .style-value { font-size: 11px; color: var(--figma-color-text-secondary); margin-top: 2px; white-space: normal; word-break: break-word; }
+    .style-meta { font-size: 11px; color: var(--figma-color-text-secondary); display: flex; align-items: center; gap: 6px; margin-top: 1px; flex-wrap: wrap; }
+    .style-hover-hex { font-family: 'Inter', monospace; font-size: 11px; color: var(--figma-color-text-secondary); opacity: 0; transition: opacity 0.15s; white-space: nowrap; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+    .density-default .style-item { padding: 8px 10px; padding-right: 56px; margin-bottom: 0; gap: 8px; border-radius: 9px; }
+    .density-default .style-value { margin-top: 1px; }
+    .density-default .style-meta { margin-top: 0; }
+    .density-default .folder { margin-bottom: 3px; }
+    .density-default .folder-header { padding: 7px 10px; }
+    .density-compact .style-item { padding: 6px 8px; padding-right: 56px; margin-bottom: 0; gap: 6px; border-radius: 8px; }
+    .density-compact .style-name { font-size: 11px; }
+    .density-compact .style-value { margin-top: 0; font-size: 10px; }
+    .density-compact .style-meta { margin-top: 0; font-size: 10px; gap: 4px; }
+    .density-compact .folder { margin-bottom: 2px; }
+    .density-compact .folder-header { padding: 6px 10px; font-size: 13px; }
+    .style-item:hover .style-hover-hex { opacity: 1; }
+    .layer-count { background: var(--figma-color-bg-tertiary); padding: 1px 4px; border-radius: 3px; }
+    .var-badge { display: inline-flex; align-items: center; padding: 1px 5px; background: var(--figma-color-bg-brand-tertiary); border-radius: 3px; font-size: 10px; color: var(--figma-color-text-brand); }
+    .var-badge.missing { background: var(--figma-color-bg-warning-tertiary); color: var(--figma-color-text-warning); }
+    .var-badge.unlinked { background: var(--figma-color-bg-secondary); color: var(--figma-color-text-tertiary); border: 1px dashed var(--figma-color-border); }
+    .var-status-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 999px; font-size: 10px; font-weight: 700; line-height: 1; background: transparent; color: var(--figma-color-text-warning); border: 1px solid var(--figma-color-text-warning); margin-right: 4px; }
+    .checkerboard { background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%); background-size: 6px 6px; background-position: 0 0, 0 3px, 3px -3px, -3px 0px; }
+
+    /* Detail Panel */
+    .detail-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--detail-empty-text); flex-direction: column; gap: 8px; }
+    .detail-empty svg { opacity: 0.3; }
+    .detail-header { padding: 14px 18px; background: var(--detail-surface); border-bottom: 1px solid var(--figma-color-border); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; gap: 16px; min-height: 58px; border-top-left-radius: 16px; border-top-right-radius: 16px; }
+    .detail-header-left h2 { font-size: 16px; font-weight: 600; line-height: 1.1; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .detail-header-left h2 .detail-path-segment { color: var(--figma-color-text-secondary); font-size: 16px; }
+    .detail-header-left h2 .detail-style-name { color: var(--figma-color-text); font-size: 16px; font-weight: 600; }
+    .detail-header-left p { display: none; }
+    .detail-header-right { display: flex; align-items: center; gap: 8px; }
+    .detail-unsaved-indicator { font-size: 12px; color: var(--figma-color-text-brand); display: inline-flex; align-items: center; gap: 4px; }
+    .detail-unsaved-indicator svg { width: 8px; height: 8px; }
+    .detail-unsaved-indicator.hidden { display: none; }
+    .detail-body { flex: 1; overflow-y: auto; padding: 20px 24px; background: var(--detail-surface); }
+    /* Layers Editor */
+    .detail-header-right .btn-add-layer { padding: 6px 18px; min-height: 40px; font-size: 12px; font-weight: 600; border-radius: 10px; }
+    .layers-grid { display: flex; flex-direction: column; gap: 12px; }
+    .layer-card { background: var(--figma-color-bg); border-radius: 12px; border: 2px solid transparent; transition: all 0.15s; overflow: hidden; box-shadow: 0 10px 20px rgba(0,0,0,0.04); }
+    .layer-card:hover { border-color: var(--figma-color-border); }
+    .layer-card.expanded { border-color: var(--figma-color-border-brand); }
+    .layer-card.modified:not(.new)::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--figma-color-bg-brand); }
+    .layer-card.modified { position: relative; }
+    .layer-card.new { border-color: var(--figma-color-border-success); }
+    .layer-row { display: flex; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer; }
+    .layer-actions { display: flex; gap: 4px; flex-shrink: 0; }
+    .layer-actions .btn-icon { width: 34px; height: 34px; padding: 4px; border-radius: 8px; }
+    .layer-row .btn-icon[data-action="delete"] { width: 44px; height: 44px; padding: 0; border-radius: 50%; color: var(--figma-color-text-tertiary); }
+    .layer-row .btn-icon[data-action="delete"] svg { width: 18px; height: 18px; }
+    .layer-row .btn-icon[data-action="delete"]:hover { color: var(--figma-color-text-danger); background: rgba(255,255,255,0.08); }
+    .layer-swatch { width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--figma-color-border); flex-shrink: 0; }
+    .layer-info { flex: 1; min-width: 0; }
+    .layer-type { font-size: 13px; font-weight: 500; margin-bottom: 2px; display: flex; align-items: center; gap: 6px; }
+    .layer-type .badge { font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: normal; background: var(--figma-color-bg-secondary); }
+    .layer-type .badge-new { background: var(--figma-color-bg-success-tertiary); color: var(--figma-color-text-success); }
+    .layer-detail { font-size: 11px; color: var(--figma-color-text-secondary); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .layer-value-row { display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 1.3; flex-wrap: wrap; }
+    .layer-value-row .layer-value-raw-inline { display: flex; align-items: center; gap: 3px; color: var(--figma-color-text-secondary); }
+    .layer-value-row .raw-arrow { font-size: 12px; opacity: 0.6; }
+    .layer-detail .var-badge { font-size: 10px; padding: 2px 6px; }
+    
+    /* Layer Expand Panel */
+    .layer-expand { padding: 12px 16px; background: var(--figma-color-bg-secondary); border-top: 1px solid var(--figma-color-border); }
+    .layer-expand.hidden { display: none; }
+    .picker-row { display: flex; gap: 16px; }
+    .picker-col { flex: 1; }
+    .picker-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+    .picker-tab { flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--figma-color-border); background: var(--figma-color-bg); color: var(--figma-color-text-secondary); font-size: 12px; font-weight: 600; text-align: center; cursor: pointer; transition: all 0.15s; }
+    .picker-tab.active { background: var(--figma-color-bg-secondary); color: var(--figma-color-text); border-color: var(--figma-color-border-brand); }
+    .picker-tab:not(.active):hover { border-color: var(--figma-color-border); color: var(--figma-color-text); }
+    .picker-col-label { font-size: 11px; font-weight: 600; color: var(--figma-color-text-secondary); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 8px; }
+    .color-input-group { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .color-preview { width: 40px; height: 40px; border-radius: 6px; border: 1px solid var(--figma-color-border); flex-shrink: 0; cursor: pointer; position: relative; overflow: hidden; }
+    .color-preview input[type="color"] { position: absolute; inset: -10px; width: calc(100% + 20px); height: calc(100% + 20px); cursor: pointer; border: none; }
+    .hex-input { flex: 1; padding: 8px 10px; border: 1px solid var(--figma-color-border); border-radius: 6px; background: var(--figma-color-bg); color: var(--figma-color-text); font-size: 12px; font-family: monospace; }
+    .hex-input:focus { outline: 2px solid var(--figma-color-border-brand); border-color: transparent; }
+    .opacity-group { display: flex; gap: 8px; align-items: center; }
+    .opacity-group label { font-size: 11px; color: var(--figma-color-text-secondary); }
+    .opacity-slider { flex: 1; }
+    .opacity-value { width: 48px; padding: 6px; border: 1px solid var(--figma-color-border); border-radius: 4px; background: var(--figma-color-bg); color: var(--figma-color-text); font-size: 11px; text-align: center; }
+    .var-section { border-left: 1px solid var(--figma-color-border); padding-left: 16px; }
+    .var-search { width: 100%; padding: 8px 10px; border: 1px solid var(--figma-color-border); border-radius: 6px; background: var(--figma-color-bg); color: var(--figma-color-text); font-size: 12px; margin-bottom: 8px; }
+    .var-search:focus { outline: 2px solid var(--figma-color-border-brand); border-color: transparent; }
+    .var-group-title { font-size: 10px; font-weight: 600; color: var(--figma-color-text-tertiary); padding: 6px 8px 2px; text-transform: uppercase; letter-spacing: 0.5px; background: var(--figma-color-bg-secondary); position: sticky; top: 0; }
+    .var-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; cursor: pointer; }
+    .var-item:hover { background: var(--figma-color-bg-secondary); }
+    .var-item.selected { background: var(--figma-color-bg-brand-tertiary); }
+    .var-swatch { width: 18px; height: 18px; border-radius: 4px; border: 1px solid var(--figma-color-border); flex-shrink: 0; }
+    .var-name { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .var-hex { font-size: 10px; color: var(--figma-color-text-tertiary); font-family: monospace; }
+    .var-current { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--figma-color-border); display: flex; }
+    .var-current .btn-unlink { width: auto; padding: 6px 14px; }
+    .var-list { max-height: 180px; overflow-y: auto; background: var(--figma-color-bg); border-radius: 6px; border: 1px solid var(--figma-color-border); scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) var(--figma-color-bg); }
+    .var-list::-webkit-scrollbar { width: 10px; }
+    .var-list::-webkit-scrollbar-track { background: var(--figma-color-bg); border-radius: 8px; }
+    .var-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 8px; border: 2px solid var(--figma-color-bg); }
+
+    .empty-state { text-align: center; padding: 30px 20px; color: var(--figma-color-text-secondary); }
+    .loading { display: flex; align-items: center; justify-content: center; height: 200px; color: var(--figma-color-text-secondary); }
+
+    /* Legend Dialog */
+    .legend-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
+    .legend-backdrop.hidden { display: none; }
+    .legend-modal { width: min(520px, 90vw); max-height: 80vh; background: var(--figma-color-bg); border: 1px solid var(--figma-color-border); border-radius: 16px; box-shadow: 0 18px 40px rgba(0,0,0,0.25); display: flex; flex-direction: column; }
+    .safety-modal { height: 60vh; }
+    .legend-header { padding: 14px 20px; border-bottom: 1px solid var(--figma-color-border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .legend-title { font-size: 14px; font-weight: 600; }
+    .legend-body { padding: 24px 20px 28px; overflow-y: auto; }
+    .legend-section-title { font-size: 10px; font-weight: 600; letter-spacing: 0.5px; color: var(--figma-color-text-tertiary); text-transform: uppercase; margin: 32px 0 12px; }
+    .legend-section-title:first-of-type { margin-top: 0; }
+    .legend-item { display: flex; gap: 12px; align-items: flex-start; font-size: 12px; }
+    .legend-item + .legend-item { margin-top: 12px; }
+    .legend-key { min-width: 140px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+    .legend-desc { color: var(--figma-color-text-secondary); line-height: 1.4; }
+    .legend-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--figma-color-bg-brand); display: inline-block; }
+    .legend-pill { padding: 2px 6px; border-radius: 4px; background: var(--figma-color-bg-secondary); font-size: 11px; }
+    .safety-layout { display: flex; gap: 24px; }
+    .safety-tabs { width: 160px; display: flex; flex-direction: column; gap: 6px; }
+    .safety-tab { border: 1px solid transparent; background: transparent; color: var(--figma-color-text-secondary); padding: 8px 10px; border-radius: 8px; text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.2px; cursor: pointer; }
+    .safety-tab.active { background: var(--figma-color-bg-secondary); color: var(--figma-color-text); border-color: var(--figma-color-border); }
+    .safety-panels { flex: 1; display: flex; flex-direction: column; gap: 18px; }
+    .safety-panel { display: none; }
+    .safety-panel.active { display: block; }
+    .safety-panel .legend-item { margin-top: 12px; flex-direction: column; align-items: flex-start; gap: 4px; }
+    .safety-panel .legend-key { min-width: 0; }
+  </style>
+</head>
+<body class="density-default">
+  <div class="app">
+    <div class="app-main">
+      <!-- Master Panel: Styles List -->
+      <div class="master-panel">
+      <div class="master-header">
+        <h1>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+          Styles
+          <span class="count-badge" id="style-count">0</span>
+        </h1>
+        <div class="master-header-controls">
+          <button class="btn btn-secondary btn-sm" id="collapse-folders-btn" title="Collapse folders">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" data-fpl-icon-size="24">
+              <path fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" d="M6.5 7a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1zm0 3a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1zM6 13.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5m.5 2.5a.5.5 0 0 0 0 1h5a.5.5 0 0 0 0-1zm6.646.146 2-2a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L15.5 15.207l-1.646 1.647a.5.5 0 0 1-.708-.708m2.708-6.292a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 .708-.708L15.5 8.793l1.646-1.647a.5.5 0 0 1 .708.708z"/>
+            </svg>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="refresh-btn">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-2.2-5.9M21 3v6h-6"/></svg>
+          </button>
+          <div class="density-menu" id="density-menu">
+            <button class="btn btn-secondary btn-sm" id="density-menu-btn" title="Actions" aria-label="Actions menu" aria-haspopup="true" aria-expanded="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <circle cx="12" cy="5" r="2"></circle>
+                <circle cx="12" cy="12" r="2"></circle>
+                <circle cx="12" cy="19" r="2"></circle>
+              </svg>
+            </button>
+            <div class="density-dropdown" id="density-dropdown" role="menu" aria-label="Action menu">
+              <div class="density-section">
+                <div class="density-title">Density</div>
+                <button class="density-option" data-density="compact" role="menuitemradio" aria-checked="false">Compact</button>
+                <button class="density-option" data-density="default" role="menuitemradio" aria-checked="true">Default</button>
+                <button class="density-option" data-density="comfortable" role="menuitemradio" aria-checked="false">Comfortable</button>
+              </div>
+              <div class="density-section">
+                <div class="density-title">Indicators</div>
+                <label class="density-option density-indicator-option" for="folder-warning-checkbox" role="menuitemcheckbox">
+                  <input type="checkbox" id="folder-warning-checkbox" aria-label="Folder warning badges">
+                  <span>Folder badges</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="search-container">
+        <input type="text" class="search-box" id="style-search" placeholder="Search styles...">
+      </div>
+      <div class="styles-list" id="styles-list" role="tree" aria-label="Styles"><div class="loading">Loading...</div></div>
+      </div>
+
+      <!-- Detail Panel: Layer Editor -->
+      <div class="detail-panel">
+      <div class="detail-empty" id="detail-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+        <span>Select a style to edit</span>
+      </div>
+      <div id="detail-content" class="hidden" style="display:none; flex-direction:column; height:100%;">
+        <div class="detail-header">
+          <div class="detail-header-left">
+            <h2 id="detail-title">
+              <span id="detail-title-text"></span>
+              <span class="detail-unsaved-indicator hidden" id="detail-unsaved-indicator">
+                <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                <span id="detail-unsaved-indicator-label">Unsaved</span>
+              </span>
+            </h2>
+            <p id="detail-path"></p>
+          </div>
+          <div class="detail-header-right">
+            <button class="btn btn-secondary btn-sm btn-add-layer" id="add-layer-btn">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+              Add
+            </button>
+          </div>
+        </div>
+        <div class="detail-body">
+          <div class="layers-grid" id="layers-list"></div>
+        </div>
+      </div>
+    </div>
+    </div>
+    <div class="app-footer">
+      <div class="app-footer-left">
+        <button class="btn btn-secondary" id="legend-btn" title="Legend" aria-label="Legend">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.5-2.5 2-2.5 3.5"/>
+            <circle cx="12" cy="17" r="1"/>
+          </svg>
+        </button>
+        <button class="btn btn-secondary" id="safety-btn" title="Data Access Info" aria-label="Data Access Info">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/>
+            <path d="M12 8v5"/>
+            <circle cx="12" cy="16" r="1"/>
+          </svg>
+        </button>
+      </div>
+      <div class="app-footer-right">
+        <button class="btn btn-secondary" id="reset-btn">Reset</button>
+        <button class="btn btn-primary" id="save-btn" disabled>Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend-backdrop hidden" id="legend-backdrop" aria-hidden="true">
+    <div class="legend-modal" role="dialog" aria-modal="true" aria-labelledby="legend-title">
+      <div class="legend-header">
+        <div class="legend-title" id="legend-title">Legend</div>
+        <button class="btn-icon" id="legend-close" aria-label="Close legend">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="legend-body">
+        <div class="legend-section-title">Status badges</div>
+        <div class="legend-item">
+          <div class="legend-key"><span class="var-badge">Variable</span></div>
+          <div class="legend-desc">Layer is linked to a variable.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key"><span class="var-badge missing"><span class="var-status-icon">?</span>Missing</span></div>
+          <div class="legend-desc">Linked variable is missing or unavailable.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key"><span class="var-badge unlinked">Unlinked</span></div>
+          <div class="legend-desc">Layer has no variable link.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key"><span class="var-badge">2/3</span></div>
+          <div class="legend-desc">Linked layers / total layers for a style.</div>
+        </div>
+
+        <div class="legend-section-title">Indicators</div>
+        <div class="legend-item">
+          <div class="legend-key"><span class="legend-dot"></span><span>Unsaved</span></div>
+          <div class="legend-desc">Dot marks a style with pending edits.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key"><span class="legend-pill">3</span><span>Layers</span></div>
+          <div class="legend-desc">Layer count for multi-layer styles.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key"><span class="legend-pill">#AABBCC</span></div>
+          <div class="legend-desc">Hover a style to preview its hex.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key">
+            <span class="folder-badge folder-badge-linked" style="margin-left:0">10</span>
+            <span class="folder-badge folder-badge-issue" style="margin-left:4px">28</span>
+            <span class="folder-badge folder-badge-other" style="margin-left:4px">4</span>
+          </div>
+          <div class="legend-desc">Blue = linked styles, orange = styles with broken/missing variables, gray = other styles.</div>
+        </div>
+
+        <div class="legend-section-title">Actions</div>
+        <div class="legend-item">
+          <div class="legend-key">Add</div>
+          <div class="legend-desc">Create a new paint layer for the selected style.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key">Save Changes</div>
+          <div class="legend-desc">Apply all pending edits back to the file.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key">Reset</div>
+          <div class="legend-desc">Discard pending edits for current styles.</div>
+        </div>
+        <div class="legend-item">
+          <div class="legend-key">Density</div>
+          <div class="legend-desc">Switch list density from the header menu.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend-backdrop hidden" id="safety-backdrop" aria-hidden="true">
+    <div class="legend-modal safety-modal" role="dialog" aria-modal="true" aria-labelledby="safety-title">
+      <div class="legend-header">
+        <div class="legend-title" id="safety-title">Data access</div>
+        <button class="btn-icon" id="safety-close" aria-label="Close info">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="legend-body">
+        <div class="safety-layout">
+          <div class="safety-tabs" role="tablist" aria-label="Data access sections">
+            <button class="safety-tab active" role="tab" aria-selected="true" data-tab="reads">What it reads</button>
+            <button class="safety-tab" role="tab" aria-selected="false" data-tab="writes">What it writes</button>
+            <button class="safety-tab" role="tab" aria-selected="false" data-tab="not-does">What it doesn't do</button>
+          </div>
+          <div class="safety-panels">
+            <div class="safety-panel active" role="tabpanel" data-panel="reads">
+              <div class="legend-item">
+                <div class="legend-key">Styles</div>
+                <div class="legend-desc">All local paint styles in this file, so they can be listed and edited.</div>
+              </div>
+              <div class="legend-item">
+                <div class="legend-key">Variables</div>
+                <div class="legend-desc">All local color variables, so you can link them to styles.</div>
+              </div>
+            </div>
+            <div class="safety-panel" role="tabpanel" data-panel="writes">
+              <div class="legend-item">
+                <div class="legend-key">Styles</div>
+                <div class="legend-desc">Only the paint layers you edit, and only after you click Save Changes.</div>
+              </div>
+            </div>
+            <div class="safety-panel" role="tabpanel" data-panel="not-does">
+              <div class="legend-item">
+                <div class="legend-key">Network</div>
+                <div class="legend-desc">No external requests, analytics, or tracking.</div>
+              </div>
+              <div class="legend-item">
+                <div class="legend-key">Storage</div>
+                <div class="legend-desc">Only UI prefs are stored (density + warning badge) in clientStorage.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    var allStyles = [];
+    var allVariables = [];
+    var selectedStyleId = null;
+    var editingLayers = [];
+    var expandedLayerIndex = null;
+    var expandedLayerTab = 'link';
+    var varSearchQuery = '';
+    var searchQuery = '';
+    var collapsedFolders = {};
+    var pendingChangesMap = {}; // Track changes per style
+    var styleDrafts = {}; // Store draft edits for each style
+    var currentDensity = 'default';
+
+    function isValidDensity(density) {
+      return density === 'compact' || density === 'default' || density === 'comfortable';
+    }
+
+    function setDensity(density, persist) {
+      var nextDensity = isValidDensity(density) ? density : 'default';
+      currentDensity = nextDensity;
+      document.body.classList.remove('density-compact', 'density-default', 'density-comfortable');
+      document.body.classList.add('density-' + nextDensity);
+      document.querySelectorAll('.density-option[data-density]').forEach(function(option) {
+        var isSelected = option.getAttribute('data-density') === nextDensity;
+        option.classList.toggle('selected', isSelected);
+        option.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      });
+      if (persist) {
+        parent.postMessage({ pluginMessage: { type: 'set-density', density: nextDensity } }, '*');
+      }
+    }
+
+    function setDensityMenuOpen(isOpen) {
+      var menu = document.getElementById('density-menu');
+      var button = document.getElementById('density-menu-btn');
+      if (!menu || !button) return;
+      menu.classList.toggle('open', isOpen);
+      button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    }
+
+    var showFolderBadges = false;
+    function updateBadgeToggleState() {
+      var toggleInput = document.getElementById('folder-warning-checkbox');
+      var toggleLabel = document.querySelector('[for="folder-warning-checkbox"]');
+      if (toggleInput) {
+        toggleInput.checked = showFolderBadges;
+        toggleInput.setAttribute('aria-checked', showFolderBadges ? 'true' : 'false');
+      }
+      if (toggleLabel) {
+        toggleLabel.setAttribute('aria-checked', showFolderBadges ? 'true' : 'false');
+        toggleLabel.classList.toggle('selected', showFolderBadges);
+      }
+    }
+    function setFolderBadgeIndicator(enabled, persist, render) {
+      showFolderBadges = !!enabled;
+      updateBadgeToggleState();
+      if (persist) {
+        parent.postMessage({ pluginMessage: { type: 'set-folder-warning-indicator', enabled: showFolderBadges } }, '*');
+      }
+      if (render !== false) {
+        renderStyles();
+      }
+    }
+
+    function setLegendOpen(isOpen) {
+      var backdrop = document.getElementById('legend-backdrop');
+      if (!backdrop) return;
+      backdrop.classList.toggle('hidden', !isOpen);
+      backdrop.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+      if (isOpen) {
+        var closeBtn = document.getElementById('legend-close');
+        if (closeBtn) closeBtn.focus();
+      }
+    }
+
+    function setSafetyOpen(isOpen) {
+      var backdrop = document.getElementById('safety-backdrop');
+      if (!backdrop) return;
+      backdrop.classList.toggle('hidden', !isOpen);
+      backdrop.setAttribute('aria-hidden', isOpen ? 'false' : 'true');
+      if (isOpen) {
+        var closeBtn = document.getElementById('safety-close');
+        if (closeBtn) closeBtn.focus();
+      }
+    }
+
+    function setSafetyTab(tabId) {
+      var tabs = document.querySelectorAll('.safety-tab');
+      var panels = document.querySelectorAll('.safety-panel');
+      tabs.forEach(function(tab) {
+        var isActive = tab.getAttribute('data-tab') === tabId;
+        tab.classList.toggle('active', isActive);
+        tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      });
+      panels.forEach(function(panel) {
+        var isActive = panel.getAttribute('data-panel') === tabId;
+        panel.classList.toggle('active', isActive);
+      });
+    }
+
+    function escapeHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
+    function createCounts() { return { linked: 0, issue: 0, other: 0 }; }
+    function incrementCounts(counts, category) {
+      if (!counts || !category) return;
+      counts[category] = (counts[category] || 0) + 1;
+    }
+    function getStyleCategory(style) {
+      var paints = (style && style.paints) || [];
+      var hasIssue = paints.some(function(p) { return p.variableStatus === 'missing' || p.variableStatus === 'unlinked'; });
+      if (hasIssue) return 'issue';
+      var hasLinked = paints.some(function(p) { return p.variableStatus === 'linked'; });
+      if (hasLinked) return 'linked';
+      return 'other';
+    }
+    function getPaintTypeLabel(type) { return { 'SOLID': 'Solid', 'GRADIENT_LINEAR': 'Linear Gradient', 'GRADIENT_RADIAL': 'Radial Gradient', 'GRADIENT_ANGULAR': 'Angular Gradient', 'GRADIENT_DIAMOND': 'Diamond Gradient', 'IMAGE': 'Image' }[type] || type; }
+    function getPaintBackground(paint) {
+      if (paint.type === 'SOLID') {
+        var hex = paint.hex || '#808080', opacity = paint.opacity !== undefined ? paint.opacity : 1;
+        if (opacity < 1) { var r = parseInt(hex.slice(1,3), 16), g = parseInt(hex.slice(3,5), 16), b = parseInt(hex.slice(5,7), 16); return 'rgba(' + r + ',' + g + ',' + b + ',' + opacity + ')'; }
+        return hex;
+      }
+      return paint.gradientCSS || '#808080';
+    }
+
+    function cloneLayer(layer) {
+      return JSON.parse(JSON.stringify(layer));
+    }
+
+    function renderVarBadge(name, status) {
+      var badgeClass = status === 'linked' || !status ? '' : status;
+      var badgeAttr = 'var-badge' + (badgeClass ? ' ' + badgeClass : '');
+      var icon = status === 'missing' ? '<span class="var-status-icon">?</span>' : '';
+      return '<span class="' + badgeAttr + '">' + icon + escapeHtml(name || 'Variable') + '</span>';
+    }
+
+    function persistCurrentDraft() {
+      if (!selectedStyleId) return;
+      styleDrafts[selectedStyleId] = {
+        layers: editingLayers.map(cloneLayer),
+        expandedLayerIndex: expandedLayerIndex,
+        expandedLayerTab: expandedLayerTab,
+        varSearchQuery: varSearchQuery
+      };
+    }
+
+    function hasCurrentStyleChanges() {
+      if (!selectedStyleId) return false;
+      var original = allStyles.find(function(s) { return s.id === selectedStyleId; });
+      if (!original) return false;
+      if (editingLayers.length !== original.paints.length) return true;
+      for (var i = 0; i < editingLayers.length; i++) {
+        var layer = editingLayers[i];
+        if (layer.isNew || layer.isDeleted || layer.modified) return true;
+      }
+      return false;
+    }
+
+    function getDraftLayers(styleId) {
+      if (styleId === selectedStyleId) {
+        return editingLayers;
+      }
+      var draft = styleDrafts[styleId];
+      return draft ? draft.layers : null;
+    }
+
+    function buildLayerChanges(layers) {
+      var layerChanges = [];
+      for (var i = layers.length - 1; i >= 0; i--) {
+        var layer = layers[i];
+        if (layer.isDeleted) {
+          if (!layer.isNew) {
+            layerChanges.push({ action: 'delete', originalIndex: layer.originalIndex });
+          }
+        } else if (layer.isNew) {
+          layerChanges.push({ action: 'add', hex: layer.hex, opacity: layer.opacity, variableId: layer.variableId });
+        } else if (layer.modified) {
+          layerChanges.push({
+            action: 'modify',
+            originalIndex: layer.originalIndex,
+            hex: layer.hex,
+            opacity: layer.opacity,
+            variableId: layer.variableId,
+            unlinkVariable: layer.unlinkVariable
+          });
+        } else {
+          layerChanges.push({ action: 'keep', originalIndex: layer.originalIndex });
+        }
+      }
+      return layerChanges;
+    }
+
+    function getPendingCount() {
+      return Object.keys(pendingChangesMap).filter(function(id) { return pendingChangesMap[id]; }).length;
+    }
+
+    function updateFooterButtons(pendingCount) {
+      var saveBtn = document.getElementById('save-btn');
+      var resetBtn = document.getElementById('reset-btn');
+      saveBtn.disabled = pendingCount === 0;
+      saveBtn.textContent = pendingCount > 0 ? 'Save Changes (' + pendingCount + ')' : 'Save Changes';
+      resetBtn.textContent = pendingCount > 0 ? 'Reset (' + pendingCount + ' pending)' : 'Reset';
+    }
+
+    function updateUI() {
+      var changed = hasCurrentStyleChanges();
+      if (selectedStyleId) {
+        pendingChangesMap[selectedStyleId] = changed;
+      }
+      var pendingCount = getPendingCount();
+      var indicator = document.getElementById('detail-unsaved-indicator');
+      if (indicator) {
+        var label = document.getElementById('detail-unsaved-indicator-label');
+        indicator.classList.toggle('hidden', !changed);
+        if (label) {
+          label.textContent = changed ? (pendingCount > 1 ? 'Unsaved (' + pendingCount + ' total)' : 'Unsaved') : 'Unsaved';
+        }
+      }
+      updateFooterButtons(pendingCount);
+      renderStyles();
+    }
+
+    // ===== STYLES LIST =====
+    function buildTree(styles) {
+      var root = { children: {}, styles: [], counts: createCounts() };
+      styles.forEach(function(style) {
+        var parts = style.name.split('/');
+        var current = root;
+        var category = getStyleCategory(style);
+        incrementCounts(current.counts, category);
+        for (var i = 0; i < parts.length - 1; i++) {
+          var part = parts[i].trim();
+          if (!current.children[part]) current.children[part] = { children: {}, styles: [], counts: createCounts() };
+          current = current.children[part];
+          incrementCounts(current.counts, category);
+        }
+        current.styles.push({ id: style.id, name: style.name, displayName: parts[parts.length - 1].trim(), paints: style.paints });
+      });
+      return root;
+    }
+
+    function renderSwatchStack(paints) {
+      if (paints.length === 0) return '<div class="swatch-single" style="background:#888"></div>';
+      if (paints.length === 1) return '<div class="swatch-single checkerboard"><div style="width:100%;height:100%;border-radius:4px;background:' + getPaintBackground(paints[0]) + '"></div></div>';
+      var html = '<div class="swatch-stack">';
+      var visible = paints.slice(0, 3);
+      for (var i = visible.length - 1; i >= 0; i--) {
+        var offset = (visible.length - 1 - i) * 3, size = 24 - (visible.length - 1 - i) * 2;
+        html += '<div class="swatch-layer checkerboard" style="width:' + size + 'px;height:' + size + 'px;top:' + offset + 'px;left:' + offset + 'px;"><div style="width:100%;height:100%;border-radius:2px;background:' + getPaintBackground(visible[i]) + '"></div></div>';
+      }
+      return html + '</div>';
+    }
+
+    function getStyleSummary(paints) {
+      var linked = 0;
+      var issueCount = 0;
+      var issueHasMissing = false;
+      var issueHasUnlinked = false;
+      paints.forEach(function(p) {
+        if (p.variableStatus === 'linked') {
+          linked++;
+        } else if (p.variableStatus === 'missing') {
+          issueCount++;
+          issueHasMissing = true;
+        } else if (p.variableStatus === 'unlinked') {
+          issueCount++;
+          issueHasUnlinked = true;
+        }
+      });
+
+      var parts = [];
+      if (paints.length > 1) parts.push('<span class="layer-count">' + paints.length + '</span>');
+
+      if (paints.length === 1 && paints[0].variableStatus) {
+        var single = paints[0];
+        parts.push(renderVarBadge(single.variableName || 'Variable', single.variableStatus));
+      } else if (linked > 0 || issueCount > 0) {
+        var summaryClass = '';
+        if (issueCount > 0) {
+          summaryClass = issueHasMissing ? 'missing' : (issueHasUnlinked ? 'unlinked' : '');
+        }
+        var summaryAttr = 'var-badge' + (summaryClass ? ' ' + summaryClass : '');
+        parts.push('<span class="' + summaryAttr + '">' + linked + '/' + paints.length + '</span>');
+      }
+
+      return parts.join('');
+    }
+
+    function getStyleValue(style) {
+      var paints = (style && style.paints) || [];
+      if (paints.length === 1) {
+        var single = paints[0];
+        if (single.variableName) {
+          var fullName = single.variableName;
+          var displayName = fullName;
+          var slashIndex = fullName.lastIndexOf('/');
+          if (slashIndex >= 0) displayName = fullName.substring(slashIndex + 1);
+          if (style && style.displayName && displayName === style.displayName) {
+            return null;
+          }
+          return { text: escapeHtml(displayName), title: displayName !== fullName ? escapeHtml(fullName) : null };
+        }
+        if (single.hex) {
+          return { text: single.hex };
+        }
+        if (single.gradientCSS || (single.type && single.type.indexOf('GRADIENT') === 0)) {
+          var gradientLabel = getPaintTypeLabel(single.type) || 'Gradient';
+          return { text: 'Gradient', title: gradientLabel !== 'Gradient' ? gradientLabel : null };
+        }
+      }
+      if (paints.length > 1) {
+        var layerText = paints.length + ' layer' + (paints.length === 1 ? '' : 's');
+        return { text: escapeHtml(layerText) };
+      }
+      return null;
+    }
+
+    function getStyleHoverHex(paints) {
+      if (!paints || paints.length === 0) return '';
+      for (var i = 0; i < paints.length; i++) {
+        if (paints[i].hex) return paints[i].hex;
+      }
+      return '';
+    }
+
+    function getStyleIssue(paints) {
+      var missing = paints.find(function(p) { return p.variableStatus === 'missing'; });
+      if (missing) {
+        return { type: 'missing', label: missing.variableName || 'Unknown variable' };
+      }
+      var unlinked = paints.find(function(p) { return p.variableStatus === 'unlinked'; });
+      if (unlinked) {
+        return { type: 'unlinked', label: unlinked.variableName || 'Unlinked variable' };
+      }
+      return null;
+    }
+
+    function renderFolder(name, node, path) {
+      var fullPath = path ? path + '/' + name : name;
+      var collapsed = collapsedFolders[fullPath];
+      var level = fullPath.split('/').length;
+      var badgeHtml = '';
+      if (showFolderBadges && node.counts) {
+        var badgeParts = [];
+        if (node.counts.linked > 0) badgeParts.push('<span class="folder-badge folder-badge-linked">' + node.counts.linked + '</span>');
+        if (node.counts.issue > 0) badgeParts.push('<span class="folder-badge folder-badge-issue">' + node.counts.issue + '</span>');
+        if (node.counts.other > 0) badgeParts.push('<span class="folder-badge folder-badge-other">' + node.counts.other + '</span>');
+        if (badgeParts.length) {
+          badgeHtml = '<div class="folder-badges">' + badgeParts.join('') + '</div>';
+        }
+      }
+      var headerContent = '<div class="folder-header-main"><svg class="chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg><svg class="folder-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg><span class="folder-name">' + escapeHtml(name) + '</span></div>' + badgeHtml;
+      return '<div class="folder"><div class="folder-header ' + (collapsed ? 'collapsed' : '') + '" data-path="' + escapeHtml(fullPath) + '" role="treeitem" aria-expanded="' + (!collapsed) + '" aria-level="' + level + '" tabindex="0">' + headerContent + '</div><div class="folder-children ' + (collapsed ? 'hidden' : '') + '">' + Object.keys(node.children).sort().map(function(n) { return renderFolder(n, node.children[n], fullPath); }).join('') + node.styles.map(renderStyleItem).join('') + '</div></div>';
+    }
+
+    function renderStyleItem(style) {
+      var isSelected = style.id === selectedStyleId;
+      var hasUnsaved = !!pendingChangesMap[style.id];
+      var issueHtml = '';
+      var valueData = getStyleValue(style);
+      var valueHtml = '';
+      if (valueData && valueData.text) {
+        var titleAttr = valueData.title ? ' title="' + valueData.title + '"' : '';
+        valueHtml = '<div class="style-value"' + titleAttr + '>' + valueData.text + '</div>';
+      }
+      var hoverHex = getStyleHoverHex(style.paints);
+      var hoverHexHtml = hoverHex ? '<div class="style-hover-hex">' + escapeHtml(hoverHex) + '</div>' : '';
+      var unsavedDot = hasUnsaved ? '<span class="style-unsaved-dot"></span>' : '';
+      var level = style.name ? style.name.split('/').length : 1;
+      return '<div class="style-item ' + (isSelected ? 'selected' : '') + (hasUnsaved ? ' has-changes' : '') + '" data-id="' + style.id + '" role="treeitem" aria-selected="' + isSelected + '" aria-level="' + level + '" tabindex="0">' + unsavedDot + renderSwatchStack(style.paints) + '<div class="style-info"><div class="style-name">' + escapeHtml(style.displayName) + '</div>' + valueHtml + '<div class="style-meta">' + getStyleSummary(style.paints) + issueHtml + '</div></div>' + hoverHexHtml + '</div>';
+    }
+
+    function renderStyles() {
+      var container = document.getElementById('styles-list');
+      var filtered = allStyles.filter(function(s) { return s.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0; });
+      document.getElementById('style-count').textContent = allStyles.length;
+      if (filtered.length === 0) { container.innerHTML = '<div class="empty-state">' + (allStyles.length === 0 ? 'No styles' : 'No matches') + '</div>'; return; }
+      var tree = buildTree(filtered);
+      container.innerHTML = Object.keys(tree.children).sort().map(function(n) { return renderFolder(n, tree.children[n], ''); }).join('') + tree.styles.map(renderStyleItem).join('');
+      
+      container.querySelectorAll('.folder-header').forEach(function(el) {
+        var toggleFolder = function(targetEl, forceExpand) {
+          var path = targetEl.getAttribute('data-path');
+          var isCollapsed = !!collapsedFolders[path];
+          var nextCollapsed = typeof forceExpand === 'boolean' ? !forceExpand : !isCollapsed;
+          collapsedFolders[path] = nextCollapsed;
+          targetEl.classList.toggle('collapsed', nextCollapsed);
+          if (targetEl.nextElementSibling) {
+            targetEl.nextElementSibling.classList.toggle('hidden', nextCollapsed);
+          }
+          targetEl.setAttribute('aria-expanded', String(!nextCollapsed));
+        };
+        el.addEventListener('click', function() {
+          toggleFolder(this);
+        });
+        el.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleFolder(this);
+          } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            toggleFolder(this, true);
+          } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            toggleFolder(this, false);
+          }
+        });
+      });
+      container.querySelectorAll('.style-item').forEach(function(el) {
+        el.addEventListener('click', function() { selectStyle(this.getAttribute('data-id')); });
+        el.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            selectStyle(this.getAttribute('data-id'));
+          }
+        });
+      });
+    }
+
+    function collectFolderPaths(node, basePath, result) {
+      if (!node || !node.children) return;
+      Object.keys(node.children).sort().forEach(function(name) {
+        var path = basePath ? basePath + '/' + name : name;
+        result.push(path);
+        collectFolderPaths(node.children[name], path, result);
+      });
+    }
+
+    function getSelectedStyleFolderPaths() {
+      if (!selectedStyleId) return [];
+      var style = allStyles.find(function(s) { return s.id === selectedStyleId; });
+      if (!style || !style.name) return [];
+      var parts = style.name.split('/').map(function(p) { return p.trim(); }).filter(Boolean);
+      if (parts.length <= 1) return [];
+      parts.pop(); // remove the style name itself
+      var paths = [];
+      for (var i = 0; i < parts.length; i++) {
+        var path = parts.slice(0, i + 1).join('/');
+        paths.push(path);
+      }
+      return paths;
+    }
+
+    function collapseAllFolders() {
+      var filtered = allStyles.filter(function(s) { return s.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0; });
+      var tree = buildTree(filtered);
+      var paths = [];
+      collectFolderPaths(tree, '', paths);
+      paths.forEach(function(path) { collapsedFolders[path] = true; });
+      var keepOpenPaths = getSelectedStyleFolderPaths();
+      keepOpenPaths.forEach(function(path) { collapsedFolders[path] = false; });
+      renderStyles();
+    }
+
+    // ===== DETAIL PANEL =====
+    function selectStyle(styleId) {
+      if (selectedStyleId === styleId) return;
+      
+      if (selectedStyleId) {
+        pendingChangesMap[selectedStyleId] = hasCurrentStyleChanges();
+      }
+      persistCurrentDraft();
+      
+      selectedStyleId = styleId;
+      var style = allStyles.find(function(s) { return s.id === styleId; });
+      if (!style) return;
+
+      var draft = styleDrafts[styleId];
+      if (draft) {
+        editingLayers = draft.layers.map(cloneLayer);
+        expandedLayerIndex = draft.expandedLayerIndex;
+        expandedLayerTab = draft.expandedLayerTab || 'link';
+        varSearchQuery = draft.varSearchQuery || '';
+      } else {
+        editingLayers = style.paints.map(function(p, i) {
+          var originalIndex = typeof p.index === 'number' ? p.index : i;
+          return { originalIndex: originalIndex, type: p.type, hex: p.hex, opacity: p.opacity, gradientCSS: p.gradientCSS, variableId: p.variableId, variableName: p.variableName, variableStatus: p.variableStatus || null, visible: p.visible, blendMode: p.blendMode, modified: false, isNew: false, isDeleted: false, unlinkVariable: false };
+        });
+        expandedLayerIndex = null;
+        expandedLayerTab = 'link';
+        varSearchQuery = '';
+      }
+
+      // Update header
+      var parts = style.name.split('/');
+      var styleName = parts.pop().trim();
+      var pathLabel = parts.length > 0 ? parts.join(' / ').trim() : '';
+      var titleHtml = '';
+      if (pathLabel) {
+        titleHtml = '<span class="detail-path-segment">' + escapeHtml(pathLabel) + ' /</span><span class="detail-style-name">' + escapeHtml(styleName) + '</span>';
+      } else {
+        titleHtml = '<span class="detail-style-name">' + escapeHtml(styleName) + '</span>';
+      }
+      document.getElementById('detail-title-text').innerHTML = titleHtml;
+      document.getElementById('detail-path').textContent = '';
+
+      // Show detail panel
+      document.getElementById('detail-empty').style.display = 'none';
+      document.getElementById('detail-content').style.display = 'flex';
+      document.getElementById('detail-content').classList.remove('hidden');
+
+      renderLayers();
+    }
+
+    function renderLayers() {
+      persistCurrentDraft();
+      var container = document.getElementById('layers-list');
+      var visibleLayers = editingLayers.filter(function(l) { return !l.isDeleted; });
+      
+      if (visibleLayers.length === 0) {
+        container.innerHTML = '<div class="empty-state">No layers. Click "Add" to create one.</div>';
+        updateUI();
+        return;
+      }
+
+      var html = '';
+      var visibleIndex = 0;
+      editingLayers.forEach(function(layer, index) {
+        if (layer.isDeleted) return;
+        var classes = 'layer-card';
+        if (expandedLayerIndex === index) classes += ' expanded';
+        if (layer.modified || layer.isNew) classes += ' modified';
+        if (layer.isNew) classes += ' new';
+        var isSolid = layer.type === 'SOLID';
+        var bg = getPaintBackground(layer);
+        var valueHtml = '';
+        var lineContent = '';
+        if (layer.variableName) {
+          lineContent += renderVarBadge(layer.variableName, layer.variableStatus);
+          if (layer.hex) {
+            lineContent += '<span class="layer-value-raw-inline"><span class="raw-arrow">→</span><span>' + escapeHtml(layer.hex) + '</span></span>';
+          }
+        } else if (layer.hex) {
+          lineContent = '<span>' + escapeHtml(layer.hex) + '</span>';
+        }
+        if (lineContent) valueHtml = '<div class="layer-value-row">' + lineContent + '</div>';
+        var isFirst = visibleIndex === 0;
+        var isLast = visibleIndex === visibleLayers.length - 1;
+        visibleIndex++;
+
+        html += '<div class="' + classes + '" data-index="' + index + '">';
+        html += '<div class="layer-row">';
+        html += '<div class="layer-actions">';
+        html += '<button class="btn-icon" data-action="up" ' + (isFirst ? 'disabled' : '') + ' title="Move up"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg></button>';
+        html += '<button class="btn-icon" data-action="down" ' + (isLast ? 'disabled' : '') + ' title="Move down"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>';
+        html += '</div>';
+        html += '<div class="layer-swatch checkerboard"><div style="width:100%;height:100%;border-radius:5px;background:' + bg + '"></div></div>';
+        html += '<div class="layer-info"><div class="layer-type">';
+        if (!isSolid) html += getPaintTypeLabel(layer.type);
+        if (layer.opacity < 1) html += '<span class="badge">' + Math.round(layer.opacity * 100) + '%</span>';
+        if (layer.isNew) html += '<span class="badge badge-new">New</span>';
+        html += '</div><div class="layer-detail">';
+        if (valueHtml) html += valueHtml;
+        if (!isSolid) html += '<span style="font-style:italic;opacity:0.5">Not editable</span>';
+        html += '</div></div>';
+        html += '<button class="btn-icon" data-action="delete" title="Delete"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>';
+        html += '</div>';
+
+        // Expanded editor
+        if (isSolid && expandedLayerIndex === index) {
+          html += '<div class="layer-expand">';
+          html += '<div class="picker-tabs">';
+          html += '<button class="picker-tab' + (expandedLayerTab === 'link' ? ' active' : '') + '" data-tab="link">Link Variable</button>';
+          html += '<button class="picker-tab' + (expandedLayerTab === 'color' ? ' active' : '') + '" data-tab="color">Color & Opacity</button>';
+          html += '</div>';
+          if (expandedLayerTab === 'link') {
+            html += '<div class="var-section">';
+            html += '<input type="text" class="var-search" placeholder="Search..." value="' + escapeHtml(varSearchQuery) + '" data-input="var-search">';
+            html += '<div class="var-list">' + renderVariableList(layer) + '</div>';
+            if (layer.variableId) {
+              html += '<div class="var-current"><button class="btn btn-danger btn-sm btn-unlink"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg> Unlink Variable</button></div>';
+            }
+            html += '</div>';
+          } else {
+            html += '<div class="picker-col">';
+            html += '<div class="color-input-group">';
+            html += '<div class="color-preview checkerboard"><div style="width:100%;height:100%;background:' + (layer.hex || '#808080') + '"><input type="color" value="' + (layer.hex || '#808080') + '" data-input="color"></div></div>';
+            html += '<input type="text" class="hex-input" value="' + (layer.hex || '#808080') + '" data-input="hex">';
+            html += '</div>';
+            html += '<div class="opacity-group">';
+            html += '<label>Opacity</label>';
+            html += '<input type="range" class="opacity-slider" min="0" max="100" value="' + Math.round((layer.opacity || 1) * 100) + '" data-input="opacity-slider">';
+            html += '<input type="text" class="opacity-value" value="' + Math.round((layer.opacity || 1) * 100) + '%" data-input="opacity-text">';
+            html += '</div>';
+            html += '</div>';
+          }
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+
+      container.innerHTML = html;
+      attachLayerEvents();
+      updateUI();
+    }
+
+    function handleColorPickerChange(inputEl, commit) {
+      if (expandedLayerIndex === null || expandedLayerIndex === undefined) return;
+      var layer = editingLayers[expandedLayerIndex];
+      if (!layer) return;
+      var hexValue = (inputEl.value || '#808080').toUpperCase();
+      layer.hex = hexValue;
+      layer.modified = true;
+      layer.variableId = null;
+      layer.variableName = null;
+      layer.variableStatus = null;
+      layer.unlinkVariable = false;
+      var colorGroup = inputEl.closest('.color-input-group');
+      if (colorGroup) {
+        var relatedHexInput = colorGroup.querySelector('[data-input="hex"]');
+        if (relatedHexInput) relatedHexInput.value = hexValue;
+      }
+      var preview = inputEl.closest('.color-preview');
+      if (preview) {
+        var previewSwatch = preview.querySelector('div');
+        if (previewSwatch) previewSwatch.style.background = hexValue;
+      }
+      if (commit) renderLayers();
+    }
+
+    function renderVariableList(selectedLayer) {
+      var filtered = allVariables.filter(function(v) {
+        return v.name.toLowerCase().indexOf(varSearchQuery.toLowerCase()) >= 0 || v.collectionName.toLowerCase().indexOf(varSearchQuery.toLowerCase()) >= 0;
+      });
+      if (filtered.length === 0) return '<div class="empty-state" style="padding:16px;font-size:12px">No variables</div>';
+      var grouped = {};
+      filtered.forEach(function(v) { if (!grouped[v.collectionName]) grouped[v.collectionName] = []; grouped[v.collectionName].push(v); });
+      var html = '';
+      Object.keys(grouped).sort().forEach(function(coll) {
+        html += '<div class="var-group-title">' + escapeHtml(coll) + '</div>';
+        grouped[coll].forEach(function(v) {
+          var selected = selectedLayer && selectedLayer.variableId === v.id;
+          html += '<div class="var-item ' + (selected ? 'selected' : '') + '" data-var-id="' + v.id + '" data-var-name="' + escapeHtml(v.name) + '" data-var-hex="' + (v.hex || '') + '"><div class="var-swatch" style="background:' + (v.hex || '#888') + '"></div><div class="var-name">' + escapeHtml(v.name) + '</div><div class="var-hex">' + (v.hex || '') + '</div></div>';
+        });
+      });
+      return html;
+    }
+
+    function attachLayerEvents() {
+      var container = document.getElementById('layers-list');
+      
+      container.querySelectorAll('.layer-row').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+          if (e.target.closest('.btn-icon')) return;
+          var index = parseInt(this.closest('.layer-card').getAttribute('data-index'));
+          if (editingLayers[index].type !== 'SOLID') return;
+          expandedLayerIndex = expandedLayerIndex === index ? null : index;
+          varSearchQuery = '';
+          renderLayers();
+        });
+      });
+
+      container.querySelectorAll('.btn-icon[data-action]').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var index = parseInt(this.closest('.layer-card').getAttribute('data-index'));
+          var action = this.getAttribute('data-action');
+          
+          if (action === 'up') {
+            var prevIndex = -1;
+            for (var i = index - 1; i >= 0; i--) { if (!editingLayers[i].isDeleted) { prevIndex = i; break; } }
+            if (prevIndex >= 0) {
+              var temp = editingLayers[index];
+              editingLayers[index] = editingLayers[prevIndex];
+              editingLayers[prevIndex] = temp;
+              editingLayers[index].modified = true;
+              editingLayers[prevIndex].modified = true;
+              if (expandedLayerIndex === index) expandedLayerIndex = prevIndex;
+              else if (expandedLayerIndex === prevIndex) expandedLayerIndex = index;
+            }
+          }
+          if (action === 'down') {
+            var nextIndex = -1;
+            for (var i = index + 1; i < editingLayers.length; i++) { if (!editingLayers[i].isDeleted) { nextIndex = i; break; } }
+            if (nextIndex >= 0) {
+              var temp = editingLayers[index];
+              editingLayers[index] = editingLayers[nextIndex];
+              editingLayers[nextIndex] = temp;
+              editingLayers[index].modified = true;
+              editingLayers[nextIndex].modified = true;
+              if (expandedLayerIndex === index) expandedLayerIndex = nextIndex;
+              else if (expandedLayerIndex === nextIndex) expandedLayerIndex = index;
+            }
+          }
+          if (action === 'delete') {
+            if (editingLayers[index].isNew) editingLayers.splice(index, 1);
+            else editingLayers[index].isDeleted = true;
+            if (expandedLayerIndex === index) expandedLayerIndex = null;
+            else if (expandedLayerIndex > index) expandedLayerIndex--;
+          }
+          renderLayers();
+        });
+      });
+
+      container.querySelectorAll('[data-input="color"]').forEach(function(el) {
+        el.addEventListener('input', function() {
+          handleColorPickerChange(this, false);
+        });
+        el.addEventListener('change', function() {
+          handleColorPickerChange(this, true);
+        });
+      });
+
+      container.querySelectorAll('[data-input="hex"]').forEach(function(el) {
+        el.addEventListener('change', function() {
+          var val = this.value.trim().toUpperCase();
+          if (!/^#[0-9A-F]{6}$/.test(val)) { this.value = editingLayers[expandedLayerIndex].hex || '#808080'; return; }
+          editingLayers[expandedLayerIndex].hex = val;
+          editingLayers[expandedLayerIndex].modified = true;
+          editingLayers[expandedLayerIndex].variableId = null;
+          editingLayers[expandedLayerIndex].variableName = null;
+          renderLayers();
+        });
+      });
+
+      container.querySelectorAll('[data-input="opacity-slider"]').forEach(function(el) {
+        el.addEventListener('input', function() {
+          editingLayers[expandedLayerIndex].opacity = parseInt(this.value) / 100;
+          editingLayers[expandedLayerIndex].modified = true;
+          container.querySelector('[data-input="opacity-text"]').value = this.value + '%';
+          updateUI();
+        });
+      });
+
+      container.querySelectorAll('[data-input="var-search"]').forEach(function(el) {
+        el.addEventListener('input', function() {
+          varSearchQuery = this.value;
+          var varList = container.querySelector('.var-list');
+          varList.innerHTML = renderVariableList(editingLayers[expandedLayerIndex]);
+          attachVarItemEvents();
+        });
+      });
+
+      container.querySelectorAll('.picker-tab').forEach(function(el) {
+        el.addEventListener('click', function() {
+          var tab = this.getAttribute('data-tab');
+          if (!tab || tab === expandedLayerTab) return;
+          expandedLayerTab = tab;
+          renderLayers();
+        });
+      });
+
+      attachVarItemEvents();
+
+      container.querySelectorAll('.btn-unlink').forEach(function(el) {
+        el.addEventListener('click', function(e) {
+          e.stopPropagation();
+          editingLayers[expandedLayerIndex].variableId = null;
+          editingLayers[expandedLayerIndex].variableName = null;
+          editingLayers[expandedLayerIndex].variableStatus = null;
+          editingLayers[expandedLayerIndex].unlinkVariable = true;
+          editingLayers[expandedLayerIndex].modified = true;
+          renderLayers();
+        });
+      });
+    }
+
+    function attachVarItemEvents() {
+      document.querySelectorAll('.var-item').forEach(function(el) {
+        el.addEventListener('click', function() {
+          var varId = this.getAttribute('data-var-id');
+          var varName = this.getAttribute('data-var-name');
+          var varHex = this.getAttribute('data-var-hex');
+          editingLayers[expandedLayerIndex].variableId = varId;
+          editingLayers[expandedLayerIndex].variableName = varName;
+          editingLayers[expandedLayerIndex].variableStatus = 'linked';
+          if (varHex) editingLayers[expandedLayerIndex].hex = varHex;
+          editingLayers[expandedLayerIndex].modified = true;
+          editingLayers[expandedLayerIndex].unlinkVariable = false;
+          renderLayers();
+        });
+      });
+    }
+
+function addLayer() {
+  editingLayers.push({ originalIndex: -1, type: 'SOLID', hex: '#808080', opacity: 1, variableId: null, variableName: null, variableStatus: null, visible: true, blendMode: 'NORMAL', modified: false, isNew: true, isDeleted: false, unlinkVariable: false });
+  expandedLayerIndex = editingLayers.length - 1;
+  expandedLayerTab = 'link';
+  varSearchQuery = '';
+  renderLayers();
+}
+
+function resetChanges() {
+  var style = allStyles.find(function(s) { return s.id === selectedStyleId; });
+  if (!style) return;
+  editingLayers = style.paints.map(function(p, i) {
+    var originalIndex = typeof p.index === 'number' ? p.index : i;
+    return { originalIndex: originalIndex, type: p.type, hex: p.hex, opacity: p.opacity, gradientCSS: p.gradientCSS, variableId: p.variableId, variableName: p.variableName, variableStatus: p.variableStatus || null, visible: p.visible, blendMode: p.blendMode, modified: false, isNew: false, isDeleted: false, unlinkVariable: false };
+  });
+  expandedLayerIndex = null;
+  expandedLayerTab = 'link';
+  delete styleDrafts[selectedStyleId];
+  pendingChangesMap[selectedStyleId] = false;
+  varSearchQuery = '';
+  renderLayers();
+}
+
+    function savePendingStyles() {
+      persistCurrentDraft();
+      if (selectedStyleId) {
+        pendingChangesMap[selectedStyleId] = hasCurrentStyleChanges();
+      }
+      var pendingIds = Object.keys(pendingChangesMap).filter(function(id) { return pendingChangesMap[id]; });
+      if (pendingIds.length === 0) return;
+      var payload = pendingIds.map(function(id) {
+        var layers = getDraftLayers(id);
+        if (!layers) return null;
+        return { styleId: id, layerChanges: buildLayerChanges(layers) };
+      }).filter(Boolean);
+      if (payload.length === 0) return;
+      parent.postMessage({ pluginMessage: { type: 'save-multiple', styles: payload } }, '*');
+    }
+
+    setDensity(currentDensity, false);
+
+    var densityMenuBtn = document.getElementById('density-menu-btn');
+    if (densityMenuBtn) {
+      densityMenuBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var menu = document.getElementById('density-menu');
+        var shouldOpen = menu ? !menu.classList.contains('open') : false;
+        setDensityMenuOpen(shouldOpen);
+      });
+    }
+
+    document.querySelectorAll('.density-option[data-density]').forEach(function(option) {
+      option.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var density = this.getAttribute('data-density');
+        setDensity(density, true);
+        setDensityMenuOpen(false);
+      });
+    });
+    var warningToggleCheckbox = document.getElementById('folder-warning-checkbox');
+    if (warningToggleCheckbox) {
+      warningToggleCheckbox.addEventListener('change', function(e) {
+        setFolderBadgeIndicator(e.target.checked, true);
+        setDensityMenuOpen(false);
+      });
+    }
+
+    document.addEventListener('click', function() {
+      setDensityMenuOpen(false);
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        setDensityMenuOpen(false);
+        setLegendOpen(false);
+        setSafetyOpen(false);
+      }
+    });
+
+    // Event listeners
+    document.getElementById('style-search').addEventListener('input', function(e) { searchQuery = e.target.value; renderStyles(); });
+    document.getElementById('collapse-folders-btn').addEventListener('click', collapseAllFolders);
+    document.getElementById('refresh-btn').addEventListener('click', function() { parent.postMessage({ pluginMessage: { type: 'refresh' } }, '*'); });
+    document.getElementById('add-layer-btn').addEventListener('click', addLayer);
+    document.getElementById('reset-btn').addEventListener('click', resetChanges);
+    document.getElementById('save-btn').addEventListener('click', savePendingStyles);
+    document.getElementById('legend-btn').addEventListener('click', function() { setLegendOpen(true); });
+    document.getElementById('legend-close').addEventListener('click', function() { setLegendOpen(false); });
+    document.getElementById('legend-backdrop').addEventListener('click', function(e) { if (e.target === this) setLegendOpen(false); });
+    document.getElementById('safety-btn').addEventListener('click', function() { setSafetyOpen(true); });
+    document.getElementById('safety-close').addEventListener('click', function() { setSafetyOpen(false); });
+    document.getElementById('safety-backdrop').addEventListener('click', function(e) { if (e.target === this) setSafetyOpen(false); });
+
+    document.querySelectorAll('.safety-tab').forEach(function(tab) {
+      tab.addEventListener('click', function() {
+        setSafetyTab(this.getAttribute('data-tab'));
+      });
+    });
+
+    window.onmessage = function(event) {
+      var msg = event.data.pluginMessage;
+      if (msg.type === 'init') {
+        styleDrafts = {};
+        pendingChangesMap = {};
+        selectedStyleId = null;
+        editingLayers = [];
+        expandedLayerIndex = null;
+        expandedLayerTab = 'link';
+        varSearchQuery = '';
+        allStyles = msg.styles;
+        allVariables = msg.variables;
+        document.getElementById('detail-empty').style.display = 'flex';
+        document.getElementById('detail-content').style.display = 'none';
+        document.getElementById('detail-content').classList.add('hidden');
+        setDensity(msg.density || 'default', false);
+        setFolderBadgeIndicator(!!msg.folderWarningBadgeEnabled, false, false);
+        renderStyles();
+      } else if (msg.type === 'styles-updated') {
+        allStyles = msg.styles;
+        if (msg.savedStyleIds) {
+          msg.savedStyleIds.forEach(function(id) {
+            pendingChangesMap[id] = false;
+            delete styleDrafts[id];
+          });
+        }
+        if (selectedStyleId) {
+          var style = allStyles.find(function(s) { return s.id === selectedStyleId; });
+          if (style) {
+            var shouldReload = !msg.savedStyleIds || msg.savedStyleIds.indexOf(selectedStyleId) >= 0;
+            if (shouldReload) {
+              editingLayers = style.paints.map(function(p, i) {
+                var originalIndex = typeof p.index === 'number' ? p.index : i;
+                return { originalIndex: originalIndex, type: p.type, hex: p.hex, opacity: p.opacity, gradientCSS: p.gradientCSS, variableId: p.variableId, variableName: p.variableName, variableStatus: p.variableStatus || null, visible: p.visible, blendMode: p.blendMode, modified: false, isNew: false, isDeleted: false, unlinkVariable: false };
+              });
+              expandedLayerIndex = null;
+              expandedLayerTab = 'link';
+              varSearchQuery = '';
+            }
+            renderLayers();
+          }
+        }
+        renderStyles();
+      }
+    };
+  </script>
+</body>
+</html>
