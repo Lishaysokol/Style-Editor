@@ -891,8 +891,8 @@
       function createPanel(options) {
         if (!IssuesCache) throw new Error('IssuesCache is required');
         var config = options || {};
-        var repoOwner = config.repoOwner || 'figma';
-        var repoName = config.repoName || 'plugin-samples';
+        var repoOwner = config.repoOwner || 'Lishaysokol';
+        var repoName = config.repoName || 'Style-Editor';
         var repo = { owner: repoOwner, name: repoName };
         var elements = config.elements || {};
         var escapeHtml = typeof config.escapeHtml === 'function' ? config.escapeHtml : defaultEscapeHtml;
@@ -1249,8 +1249,8 @@
     var currentDensity = 'default';
     var focusedItemIndex = -1;
     var visibleTreeItems = [];
-    var issuesRepoOwner = 'figma';
-    var issuesRepoName = 'plugin-samples';
+    var issuesRepoOwner = 'Lishaysokol';
+    var issuesRepoName = 'Style-Editor';
     var issuesPanel = null;
     var issuesBackdrop = document.getElementById('issues-backdrop');
     var issuesStatusEl = document.getElementById('issues-status');
