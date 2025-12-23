@@ -3,6 +3,7 @@ figma.showUI(__html__, { width: 900, height: 780, themeColors: true });
 var variableNameCache = {};
 var densityStorageKey = 'stylesDensity';
 var warningIndicatorStorageKey = 'stylesFolderWarningBadge';
+var issuesCacheStorageKey = 'issuesCache-v1';
 
 async function getDensityPreference() {
   try {
@@ -18,6 +19,20 @@ async function getFolderWarningIndicatorPreference() {
     return value === true;
   } catch (err) {}
   return false;
+}
+
+async function getIssuesCache() {
+  try {
+    var cache = await figma.clientStorage.getAsync(issuesCacheStorageKey);
+    return cache || null;
+  } catch (err) {}
+  return null;
+}
+
+async function setIssuesCache(cache) {
+  try {
+    await figma.clientStorage.setAsync(issuesCacheStorageKey, cache || null);
+  } catch (err) {}
 }
 
 function rgbToHex(r, g, b) {
@@ -281,7 +296,8 @@ async function init() {
   var styles = await getAllColorStyles(varData.knownIds);
   var density = await getDensityPreference();
   var warningPreference = await getFolderWarningIndicatorPreference();
-  figma.ui.postMessage({ type: 'init', styles: styles, variables: varData.variables, density: density, folderWarningBadgeEnabled: warningPreference });
+  var issuesCache = await getIssuesCache();
+  figma.ui.postMessage({ type: 'init', styles: styles, variables: varData.variables, density: density, folderWarningBadgeEnabled: warningPreference, issuesCache: issuesCache });
 }
 
 figma.ui.onmessage = async function(msg) {
@@ -327,6 +343,8 @@ figma.ui.onmessage = async function(msg) {
     if (typeof msg.enabled === 'boolean') {
       await figma.clientStorage.setAsync(warningIndicatorStorageKey, msg.enabled);
     }
+  } else if (msg.type === 'set-issues-cache') {
+    await setIssuesCache(msg.cache);
   } else if (msg.type === 'close') {
     figma.closePlugin();
   }

@@ -692,11 +692,11 @@
             <div class="safety-panel" role="tabpanel" data-panel="not-does">
               <div class="legend-item">
                 <div class="legend-key">Network</div>
-                <div class="legend-desc">No external requests, analytics, or tracking.</div>
+                <div class="legend-desc">Fetches GitHub issues on demand from api.github.com when you open the panel.</div>
               </div>
               <div class="legend-item">
                 <div class="legend-key">Storage</div>
-                <div class="legend-desc">Only UI prefs are stored (density + warning badge) in clientStorage.</div>
+                <div class="legend-desc">UI prefs and a short-lived issues cache are stored in clientStorage.</div>
               </div>
             </div>
           </div>
@@ -736,6 +736,450 @@
   </div>
 
   <script>
+    // Inline IssuesCache for Figma UI loading.
+    (function(root, factory) {
+      var hasCommonJs = typeof module !== 'undefined' && module.exports && typeof require === 'function';
+      if (hasCommonJs) {
+        module.exports = factory();
+      } else {
+        root.IssuesCache = factory();
+      }
+    })(this, function() {
+      'use strict';
+
+      var VERSION = 1;
+
+      function ensureArray(value) {
+        return Array.isArray(value) ? value : [];
+      }
+
+      function ensureNumber(value, fallback) {
+        return typeof value === 'number' && !isNaN(value) ? value : fallback;
+      }
+
+      function normalizeRepo(repo) {
+        if (!repo || typeof repo !== 'object') return null;
+        var owner = typeof repo.owner === 'string' ? repo.owner : '';
+        var name = typeof repo.name === 'string' ? repo.name : '';
+        if (!owner || !name) return null;
+        return { owner: owner, name: name };
+      }
+
+      function sanitize(cache) {
+        if (!cache || typeof cache !== 'object') return null;
+        return {
+          version: VERSION,
+          timestamp: ensureNumber(cache.timestamp, 0),
+          repo: normalizeRepo(cache.repo),
+          data: {
+            open: ensureArray(cache.data && cache.data.open),
+            closed: ensureArray(cache.data && cache.data.closed)
+          },
+          totals: {
+            open: ensureNumber(cache.totals && cache.totals.open, 0),
+            closed: ensureNumber(cache.totals && cache.totals.closed, 0)
+          },
+          page: {
+            open: ensureNumber(cache.page && cache.page.open, 1),
+            closed: ensureNumber(cache.page && cache.page.closed, 1)
+          }
+        };
+      }
+
+      function migrate(raw, repo) {
+        if (!raw || typeof raw !== 'object') return null;
+        var candidate = null;
+        if (raw.version === VERSION) {
+          candidate = raw;
+        } else if (raw.data && raw.totals && raw.page && raw.timestamp) {
+          candidate = {
+            version: VERSION,
+            timestamp: raw.timestamp,
+            repo: raw.repo || null,
+            data: raw.data,
+            totals: raw.totals,
+            page: raw.page
+          };
+        }
+        if (!candidate) return null;
+        if (!candidate.repo && repo) {
+          candidate.repo = repo;
+        }
+        return sanitize(candidate);
+      }
+
+      function create(data, totals, page, repo, now) {
+        return sanitize({
+          version: VERSION,
+          timestamp: typeof now === 'number' ? now : Date.now(),
+          repo: repo || null,
+          data: data || {},
+          totals: totals || {},
+          page: page || {}
+        });
+      }
+
+      function isValid(cache, ttlMs, repo, now) {
+        if (!cache || typeof cache.timestamp !== 'number') return false;
+        var timestamp = cache.timestamp;
+        var nowValue = typeof now === 'number' ? now : Date.now();
+        if (ttlMs && nowValue - timestamp > ttlMs) return false;
+        if (repo) {
+          var repoData = normalizeRepo(cache.repo);
+          if (!repoData) return false;
+          if (repoData.owner !== repo.owner || repoData.name !== repo.name) return false;
+        }
+        return true;
+      }
+
+      return {
+        VERSION: VERSION,
+        create: create,
+        migrate: migrate,
+        sanitize: sanitize,
+        isValid: isValid
+      };
+    });
+  </script>
+  <script>
+    // Inline IssuesPanel for Figma UI loading.
+    (function(root, factory) {
+      var hasCommonJs = typeof module !== 'undefined' && module.exports && typeof require === 'function';
+      if (hasCommonJs) {
+        module.exports = factory(require('./issues-cache.js'));
+      } else {
+        root.IssuesPanel = factory(root.IssuesCache);
+      }
+    })(this, function(IssuesCache) {
+      'use strict';
+
+      var DEFAULT_TTL = 3 * 60 * 1000;
+
+      function defaultEscapeHtml(str) {
+        if (!str) return '';
+        if (typeof document === 'undefined') return String(str);
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      function createPanel(options) {
+        if (!IssuesCache) throw new Error('IssuesCache is required');
+        var config = options || {};
+        var repoOwner = config.repoOwner || 'figma';
+        var repoName = config.repoName || 'plugin-samples';
+        var repo = { owner: repoOwner, name: repoName };
+        var elements = config.elements || {};
+        var escapeHtml = typeof config.escapeHtml === 'function' ? config.escapeHtml : defaultEscapeHtml;
+        var cacheTTL = typeof config.cacheTTL === 'number' ? config.cacheTTL : DEFAULT_TTL;
+        var perPage = typeof config.perPage === 'number' ? config.perPage : 10;
+        var onCacheChange = typeof config.onCacheChange === 'function' ? config.onCacheChange : null;
+
+        var issuesData = { open: [], closed: [] };
+        var issuesTotals = { open: 0, closed: 0 };
+        var issuesPage = { open: 1, closed: 1 };
+        var issuesActiveTab = 'open';
+        var issuesFetchInProgress = false;
+        var issuesCache = null;
+        var isOpen = false;
+
+        if (elements.subtitle) {
+          elements.subtitle.textContent = repoOwner + '/' + repoName;
+        }
+
+        function setIssuesMessage(message, isError) {
+          if (!elements.status) return;
+          elements.status.textContent = message;
+          elements.status.classList.toggle('issues-status-error', !!isError);
+        }
+
+        function setIssuesTabCounts(openCount, closedCount) {
+          if (elements.openCount) elements.openCount.textContent = String(openCount || 0);
+          if (elements.closedCount) elements.closedCount.textContent = String(closedCount || 0);
+        }
+
+        function setIssuesTab(tabId) {
+          if (tabId !== 'open' && tabId !== 'closed') return;
+          issuesActiveTab = tabId;
+          if (elements.openTab) {
+            var isOpenTab = tabId === 'open';
+            elements.openTab.classList.toggle('active', isOpenTab);
+            elements.openTab.setAttribute('aria-selected', isOpenTab ? 'true' : 'false');
+          }
+          if (elements.closedTab) {
+            var isClosedTab = tabId === 'closed';
+            elements.closedTab.classList.toggle('active', isClosedTab);
+            elements.closedTab.setAttribute('aria-selected', isClosedTab ? 'true' : 'false');
+          }
+          if (issuesFetchInProgress) {
+            updateLoadMoreButton();
+            return;
+          }
+          if (issuesData.open.length === 0 && issuesData.closed.length === 0) {
+            updateLoadMoreButton();
+            return;
+          }
+          renderIssuesList(issuesData[issuesActiveTab] || []);
+        }
+
+        function formatRateLimitReset(resetSeconds) {
+          if (!resetSeconds || isNaN(resetSeconds)) return null;
+          var date = new Date(resetSeconds * 1000);
+          return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function buildRateLimitError(response) {
+          var resetHeader = response.headers.get('x-ratelimit-reset');
+          var resetSeconds = resetHeader ? parseInt(resetHeader, 10) : null;
+          var resetTime = formatRateLimitReset(resetSeconds);
+          var message = 'Rate limit reached. Try again' + (resetTime ? ' at ' + resetTime : ' later') + '.';
+          var error = new Error(message);
+          error.isRateLimit = true;
+          return error;
+        }
+
+        function fetchJsonWithRateLimit(url) {
+          return fetch(url, { cache: 'no-store' })
+            .then(function(response) {
+              if (response.ok) return response.json();
+              if (response.status === 403) throw buildRateLimitError(response);
+              throw new Error('Server returned ' + response.status);
+            });
+        }
+
+        function buildIssuesEndpoint(state, page) {
+          return 'https://api.github.com/repos/' + repoOwner + '/' + repoName + '/issues?per_page=' + perPage + '&state=' + state + '&sort=created&direction=desc&page=' + page;
+        }
+
+        function fetchIssuesPage(state, page) {
+          return fetchJsonWithRateLimit(buildIssuesEndpoint(state, page))
+            .then(function(data) {
+              return Array.isArray(data) ? data.filter(function(issue) { return issue && !issue.pull_request; }) : [];
+            });
+        }
+
+        function formatIssueState(state) {
+          if (!state || typeof state !== 'string') return 'Unknown';
+          return state.charAt(0).toUpperCase() + state.slice(1);
+        }
+
+        function openIssueLink(url) {
+          if (!url) return;
+          try {
+            window.open(url, '_blank');
+          } catch (err) {}
+        }
+
+        function attachIssueEvents() {
+          if (!elements.list) return;
+          elements.list.querySelectorAll('.issues-item').forEach(function(item) {
+            item.addEventListener('click', function() {
+              openIssueLink(this.getAttribute('data-url'));
+            });
+            item.addEventListener('keydown', function(evt) {
+              if (evt.key === 'Enter' || evt.key === ' ') {
+                evt.preventDefault();
+                openIssueLink(this.getAttribute('data-url'));
+              }
+            });
+          });
+        }
+
+        function renderIssuesList(issues) {
+          if (!elements.list) return;
+          if (!issues || issues.length === 0) {
+            elements.list.innerHTML = '';
+            setIssuesMessage('No ' + issuesActiveTab + ' issues found for ' + repoOwner + '/' + repoName + '.');
+            updateLoadMoreButton();
+            return;
+          }
+          var totalForTab = issuesTotals[issuesActiveTab] || 0;
+          var itemsHtml = issues.map(function(issue) {
+            var issueTitle = issue && issue.title ? issue.title : 'Untitled issue';
+            var issueNumber = typeof issue.number === 'number' ? issue.number : '';
+            var issueUrl = issue && issue.html_url ? issue.html_url : '';
+            var rawState = issue && issue.state ? issue.state : 'unknown';
+            var stateClass = rawState === 'closed' ? 'issues-state-closed' : 'issues-state-open';
+            var numberHtml = issueNumber ? '#' + issueNumber : '';
+            var labelHtml = '';
+            if (Array.isArray(issue.labels) && issue.labels.length > 0) {
+              var labelsMarkup = issue.labels.map(function(label) {
+                var labelName = label && label.name ? label.name : '';
+                var colorToken = label && label.color ? '#' + label.color : 'transparent';
+                var dotStyle = colorToken ? 'background:' + colorToken + '; border-color:' + colorToken + ';' : '';
+                return '<span class="issues-label" style="border-color:' + colorToken + '"><span class="issues-label-dot" style="' + dotStyle + '"></span>' + escapeHtml(labelName) + '</span>';
+              }).join('');
+              labelHtml = '<div class="issues-labels">' + labelsMarkup + '</div>';
+            }
+            return '<li class="issues-item" tabindex="0" data-url="' + escapeHtml(issueUrl) + '"><div class="issues-title-row"><span>' + escapeHtml(issueTitle) + '</span><span class="issues-number">' + escapeHtml(numberHtml) + '</span></div><div class="issues-meta-row"><span class="issues-state ' + stateClass + '">' + escapeHtml(formatIssueState(rawState)) + '</span>' + labelHtml + '</div></li>';
+          }).join('');
+          elements.list.innerHTML = itemsHtml;
+          setIssuesMessage('Showing ' + issues.length + ' of ' + totalForTab + ' ' + issuesActiveTab + ' issues from ' + repoOwner + '/' + repoName + '.');
+          attachIssueEvents();
+          updateLoadMoreButton();
+        }
+
+        function canLoadMore(tabId) {
+          return (issuesData[tabId] || []).length < (issuesTotals[tabId] || 0);
+        }
+
+        function updateLoadMoreButton() {
+          if (!elements.loadMore) return;
+          var showButton = canLoadMore(issuesActiveTab);
+          elements.loadMore.classList.toggle('hidden', !showButton);
+          elements.loadMore.disabled = issuesFetchInProgress || !showButton;
+          elements.loadMore.textContent = issuesFetchInProgress ? 'Loading...' : 'Load more';
+        }
+
+        function applyIssuesCache(cache) {
+          if (!cache) return;
+          issuesData = {
+            open: cache.data.open.slice(),
+            closed: cache.data.closed.slice()
+          };
+          issuesTotals = { open: cache.totals.open, closed: cache.totals.closed };
+          issuesPage = { open: cache.page.open, closed: cache.page.closed };
+          setIssuesTabCounts(issuesTotals.open, issuesTotals.closed);
+          renderIssuesList(issuesData[issuesActiveTab] || []);
+        }
+
+        function updateIssuesCache() {
+          issuesCache = IssuesCache.create(issuesData, issuesTotals, issuesPage, repo);
+          if (onCacheChange) onCacheChange(issuesCache);
+        }
+
+        function setCache(rawCache) {
+          var migrated = IssuesCache.migrate(rawCache, repo);
+          if (!migrated) return null;
+          issuesCache = migrated;
+          if (onCacheChange && rawCache && (!rawCache.version || rawCache.version !== migrated.version || !rawCache.repo)) {
+            onCacheChange(migrated);
+          }
+          if (isOpen && IssuesCache.isValid(migrated, cacheTTL, repo)) {
+            applyIssuesCache(migrated);
+          }
+          return migrated;
+        }
+
+        function fetchGithubIssues(forceRefresh) {
+          if (!elements.backdrop || !elements.list) return;
+          if (issuesFetchInProgress) return;
+          if (!forceRefresh && issuesCache && IssuesCache.isValid(issuesCache, cacheTTL, repo)) {
+            applyIssuesCache(issuesCache);
+            return;
+          }
+          issuesFetchInProgress = true;
+          setIssuesMessage('Loading issues from ' + repoOwner + '/' + repoName + '...');
+          elements.list.innerHTML = '';
+          updateLoadMoreButton();
+          issuesPage = { open: 1, closed: 1 };
+          var openCountEndpoint = 'https://api.github.com/search/issues?q=repo:' + repoOwner + '/' + repoName + '+type:issue+state:open&per_page=1';
+          var closedCountEndpoint = 'https://api.github.com/search/issues?q=repo:' + repoOwner + '/' + repoName + '+type:issue+state:closed&per_page=1';
+          Promise.all([
+            fetchIssuesPage('open', issuesPage.open),
+            fetchIssuesPage('closed', issuesPage.closed),
+            fetchJsonWithRateLimit(openCountEndpoint),
+            fetchJsonWithRateLimit(closedCountEndpoint)
+          ])
+            .then(function(responses) {
+              var openItems = Array.isArray(responses[0]) ? responses[0] : [];
+              var closedItems = Array.isArray(responses[1]) ? responses[1] : [];
+              var openTotal = responses[2] && typeof responses[2].total_count === 'number' ? responses[2].total_count : openItems.length;
+              var closedTotal = responses[3] && typeof responses[3].total_count === 'number' ? responses[3].total_count : closedItems.length;
+              issuesData = { open: openItems, closed: closedItems };
+              issuesTotals = { open: openTotal, closed: closedTotal };
+              setIssuesTabCounts(openTotal, closedTotal);
+              renderIssuesList(issuesData[issuesActiveTab] || []);
+              updateIssuesCache();
+            })
+            .catch(function(err) {
+              if (issuesCache) {
+                applyIssuesCache(issuesCache);
+                setIssuesMessage('Unable to refresh issues: ' + (err.message || 'Network error') + ' Showing cached results.', true);
+                return;
+              }
+              issuesData = { open: [], closed: [] };
+              issuesTotals = { open: 0, closed: 0 };
+              setIssuesTabCounts(0, 0);
+              setIssuesMessage('Unable to load issues: ' + (err.message || 'Network error'), true);
+              elements.list.innerHTML = '';
+            })
+            .finally(function() {
+              issuesFetchInProgress = false;
+              updateLoadMoreButton();
+            });
+        }
+
+        function loadMoreIssues() {
+          if (issuesFetchInProgress) return;
+          if (!canLoadMore(issuesActiveTab)) {
+            updateLoadMoreButton();
+            return;
+          }
+          issuesFetchInProgress = true;
+          updateLoadMoreButton();
+          var nextPage = (issuesPage[issuesActiveTab] || 1) + 1;
+          fetchIssuesPage(issuesActiveTab, nextPage)
+            .then(function(items) {
+              issuesPage[issuesActiveTab] = nextPage;
+              if (items.length > 0) {
+                issuesData[issuesActiveTab] = issuesData[issuesActiveTab].concat(items);
+                renderIssuesList(issuesData[issuesActiveTab]);
+                updateIssuesCache();
+              } else {
+                updateLoadMoreButton();
+              }
+            })
+            .catch(function(err) {
+              setIssuesMessage('Unable to load more issues: ' + (err.message || 'Network error'), true);
+            })
+            .finally(function() {
+              issuesFetchInProgress = false;
+              updateLoadMoreButton();
+            });
+        }
+
+        function openIssuesModal() {
+          if (!elements.backdrop) return;
+          isOpen = true;
+          elements.backdrop.classList.add('open');
+          elements.backdrop.setAttribute('aria-hidden', 'false');
+          setIssuesTab('open');
+          if (issuesCache && IssuesCache.isValid(issuesCache, cacheTTL, repo)) {
+            applyIssuesCache(issuesCache);
+            return;
+          }
+          issuesData = { open: [], closed: [] };
+          issuesTotals = { open: 0, closed: 0 };
+          issuesPage = { open: 1, closed: 1 };
+          setIssuesTabCounts(0, 0);
+          updateLoadMoreButton();
+          fetchGithubIssues(true);
+        }
+
+        function closeIssuesModal() {
+          if (!elements.backdrop) return;
+          isOpen = false;
+          elements.backdrop.classList.remove('open');
+          elements.backdrop.setAttribute('aria-hidden', 'true');
+        }
+
+        return {
+          open: openIssuesModal,
+          close: closeIssuesModal,
+          refresh: function() { fetchGithubIssues(true); },
+          loadMore: loadMoreIssues,
+          setTab: setIssuesTab,
+          setCache: setCache
+        };
+      }
+
+      return {
+        createPanel: createPanel
+      };
+    });
+  </script>
+  <script>
     var allStyles = [];
     var allVariables = [];
     var selectedStyleId = null;
@@ -752,7 +1196,7 @@
     var visibleTreeItems = [];
     var issuesRepoOwner = 'figma';
     var issuesRepoName = 'plugin-samples';
-    var issuesFetchInProgress = false;
+    var issuesPanel = null;
     var issuesBackdrop = document.getElementById('issues-backdrop');
     var issuesStatusEl = document.getElementById('issues-status');
     var issuesListEl = document.getElementById('issues-list');
@@ -762,12 +1206,7 @@
     var issuesClosedCountEl = document.getElementById('issues-closed-count');
     var issuesOpenTabEl = document.getElementById('issues-tab-open');
     var issuesClosedTabEl = document.getElementById('issues-tab-closed');
-    var issuesData = { open: [], closed: [] };
-    var issuesActiveTab = 'open';
-    var issuesTotals = { open: 0, closed: 0 };
-    var issuesPerPage = 10;
-    var issuesPage = { open: 1, closed: 1 };
-    var issuesCache = null;
+    var issuesSubtitleEl = document.querySelector('.issues-subtitle');
     var issuesCacheTTL = 3 * 60 * 1000;
 
     function isValidDensity(density) {
@@ -857,274 +1296,28 @@
       });
     }
 
-    function setIssuesMessage(message, isError) {
-      if (!issuesStatusEl) return;
-      issuesStatusEl.textContent = message;
-      issuesStatusEl.classList.toggle('issues-status-error', !!isError);
-    }
-
-    function setIssuesTabCounts(openCount, closedCount) {
-      if (issuesOpenCountEl) issuesOpenCountEl.textContent = String(openCount || 0);
-      if (issuesClosedCountEl) issuesClosedCountEl.textContent = String(closedCount || 0);
-    }
-
-    function setIssuesTab(tabId) {
-      if (tabId !== 'open' && tabId !== 'closed') return;
-      issuesActiveTab = tabId;
-      if (issuesOpenTabEl) {
-        var isOpen = tabId === 'open';
-        issuesOpenTabEl.classList.toggle('active', isOpen);
-        issuesOpenTabEl.setAttribute('aria-selected', isOpen ? 'true' : 'false');
-      }
-      if (issuesClosedTabEl) {
-        var isClosed = tabId === 'closed';
-        issuesClosedTabEl.classList.toggle('active', isClosed);
-        issuesClosedTabEl.setAttribute('aria-selected', isClosed ? 'true' : 'false');
-      }
-      if (issuesFetchInProgress) {
-        updateLoadMoreButton();
-        return;
-      }
-      if (issuesData.open.length === 0 && issuesData.closed.length === 0) {
-        updateLoadMoreButton();
-        return;
-      }
-      renderIssuesList(issuesData[issuesActiveTab] || []);
-    }
-
-    function formatRateLimitReset(resetSeconds) {
-      if (!resetSeconds || isNaN(resetSeconds)) return null;
-      var date = new Date(resetSeconds * 1000);
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-
-    function buildRateLimitError(response) {
-      var resetHeader = response.headers.get('x-ratelimit-reset');
-      var resetSeconds = resetHeader ? parseInt(resetHeader, 10) : null;
-      var resetTime = formatRateLimitReset(resetSeconds);
-      var message = 'Rate limit reached. Try again' + (resetTime ? ' at ' + resetTime : ' later') + '.';
-      var error = new Error(message);
-      error.isRateLimit = true;
-      return error;
-    }
-
-    function fetchJsonWithRateLimit(url) {
-      return fetch(url, { cache: 'no-store' })
-        .then(function(response) {
-          if (response.ok) return response.json();
-          if (response.status === 403) throw buildRateLimitError(response);
-          throw new Error('Server returned ' + response.status);
-        });
-    }
-
-    function isIssuesCacheValid() {
-      return issuesCache && (Date.now() - issuesCache.timestamp < issuesCacheTTL);
-    }
-
-    function applyIssuesCache() {
-      if (!issuesCache) return;
-      issuesData = {
-        open: issuesCache.data.open.slice(),
-        closed: issuesCache.data.closed.slice()
-      };
-      issuesTotals = { open: issuesCache.totals.open, closed: issuesCache.totals.closed };
-      issuesPage = { open: issuesCache.page.open, closed: issuesCache.page.closed };
-      setIssuesTabCounts(issuesTotals.open, issuesTotals.closed);
-      renderIssuesList(issuesData[issuesActiveTab] || []);
-    }
-
-    function updateIssuesCache() {
-      issuesCache = {
-        data: {
-          open: issuesData.open.slice(),
-          closed: issuesData.closed.slice()
+    function initIssuesPanel() {
+      if (!window.IssuesPanel || !window.IssuesCache) return;
+      issuesPanel = window.IssuesPanel.createPanel({
+        repoOwner: issuesRepoOwner,
+        repoName: issuesRepoName,
+        cacheTTL: issuesCacheTTL,
+        escapeHtml: escapeHtml,
+        elements: {
+          backdrop: issuesBackdrop,
+          status: issuesStatusEl,
+          list: issuesListEl,
+          loadMore: issuesLoadMoreBtn,
+          openCount: issuesOpenCountEl,
+          closedCount: issuesClosedCountEl,
+          openTab: issuesOpenTabEl,
+          closedTab: issuesClosedTabEl,
+          subtitle: issuesSubtitleEl
         },
-        totals: { open: issuesTotals.open, closed: issuesTotals.closed },
-        page: { open: issuesPage.open, closed: issuesPage.closed },
-        timestamp: Date.now()
-      };
-    }
-
-    function canLoadMore(tabId) {
-      return (issuesData[tabId] || []).length < (issuesTotals[tabId] || 0);
-    }
-
-    function updateLoadMoreButton() {
-      if (!issuesLoadMoreBtn) return;
-      var showButton = canLoadMore(issuesActiveTab);
-      issuesLoadMoreBtn.classList.toggle('hidden', !showButton);
-      issuesLoadMoreBtn.disabled = issuesFetchInProgress || !showButton;
-      issuesLoadMoreBtn.textContent = issuesFetchInProgress ? 'Loading...' : 'Load more';
-    }
-
-    function fetchIssuesPage(state, page) {
-      var endpoint = 'https://api.github.com/repos/' + issuesRepoOwner + '/' + issuesRepoName + '/issues?per_page=' + issuesPerPage + '&state=' + state + '&sort=created&direction=desc&page=' + page;
-      return fetchJsonWithRateLimit(endpoint)
-        .then(function(data) {
-          return Array.isArray(data) ? data.filter(function(issue) { return issue && !issue.pull_request; }) : [];
-        });
-    }
-
-    function formatIssueState(state) {
-      if (!state || typeof state !== 'string') return 'Unknown';
-      return state.charAt(0).toUpperCase() + state.slice(1);
-    }
-
-    function openIssueLink(url) {
-      if (!url) return;
-      try {
-        window.open(url, '_blank');
-      } catch (err) {}
-    }
-
-    function attachIssueEvents() {
-      if (!issuesListEl) return;
-      issuesListEl.querySelectorAll('.issues-item').forEach(function(item) {
-        item.addEventListener('click', function() {
-          openIssueLink(this.getAttribute('data-url'));
-        });
-        item.addEventListener('keydown', function(evt) {
-          if (evt.key === 'Enter' || evt.key === ' ') {
-            evt.preventDefault();
-            openIssueLink(this.getAttribute('data-url'));
-          }
-        });
-      });
-    }
-
-    function renderIssuesList(issues) {
-      if (!issuesListEl) return;
-      if (!issues || issues.length === 0) {
-        issuesListEl.innerHTML = '';
-        setIssuesMessage('No ' + issuesActiveTab + ' issues found for ' + issuesRepoOwner + '/' + issuesRepoName + '.');
-        updateLoadMoreButton();
-        return;
-      }
-      var totalForTab = issuesTotals[issuesActiveTab] || 0;
-      var itemsHtml = issues.map(function(issue) {
-        var issueTitle = issue && issue.title ? issue.title : 'Untitled issue';
-        var issueNumber = typeof issue.number === 'number' ? issue.number : '';
-        var issueUrl = issue && issue.html_url ? issue.html_url : '';
-        var rawState = issue && issue.state ? issue.state : 'unknown';
-        var stateClass = rawState === 'closed' ? 'issues-state-closed' : 'issues-state-open';
-        var numberHtml = issueNumber ? '#' + issueNumber : '';
-        var labelHtml = '';
-        if (Array.isArray(issue.labels) && issue.labels.length > 0) {
-          var labelsMarkup = issue.labels.map(function(label) {
-            var labelName = label && label.name ? label.name : '';
-            var colorToken = label && label.color ? '#' + label.color : 'transparent';
-            var dotStyle = colorToken ? 'background:' + colorToken + '; border-color:' + colorToken + ';' : '';
-            return '<span class="issues-label" style="border-color:' + colorToken + '"><span class="issues-label-dot" style="' + dotStyle + '"></span>' + escapeHtml(labelName) + '</span>';
-          }).join('');
-          labelHtml = '<div class="issues-labels">' + labelsMarkup + '</div>';
+        onCacheChange: function(cache) {
+          parent.postMessage({ pluginMessage: { type: 'set-issues-cache', cache: cache } }, '*');
         }
-        return '<li class="issues-item" tabindex="0" data-url="' + escapeHtml(issueUrl) + '"><div class="issues-title-row"><span>' + escapeHtml(issueTitle) + '</span><span class="issues-number">' + escapeHtml(numberHtml) + '</span></div><div class="issues-meta-row"><span class="issues-state ' + stateClass + '">' + escapeHtml(formatIssueState(rawState)) + '</span>' + labelHtml + '</div></li>';
-      }).join('');
-      issuesListEl.innerHTML = itemsHtml;
-      setIssuesMessage('Showing ' + issues.length + ' of ' + totalForTab + ' ' + issuesActiveTab + ' issues from ' + issuesRepoOwner + '/' + issuesRepoName + '.');
-      attachIssueEvents();
-      updateLoadMoreButton();
-    }
-
-    function fetchGithubIssues(forceRefresh) {
-      if (!issuesBackdrop || !issuesListEl) return;
-      if (issuesFetchInProgress) return;
-      if (!forceRefresh && isIssuesCacheValid()) {
-        applyIssuesCache();
-        return;
-      }
-      issuesFetchInProgress = true;
-      setIssuesMessage('Loading issues from ' + issuesRepoOwner + '/' + issuesRepoName + '...');
-      issuesListEl.innerHTML = '';
-      updateLoadMoreButton();
-      issuesPage = { open: 1, closed: 1 };
-      var openCountEndpoint = 'https://api.github.com/search/issues?q=repo:' + issuesRepoOwner + '/' + issuesRepoName + '+type:issue+state:open&per_page=1';
-      var closedCountEndpoint = 'https://api.github.com/search/issues?q=repo:' + issuesRepoOwner + '/' + issuesRepoName + '+type:issue+state:closed&per_page=1';
-      Promise.all([
-        fetchIssuesPage('open', issuesPage.open),
-        fetchIssuesPage('closed', issuesPage.closed),
-        fetchJsonWithRateLimit(openCountEndpoint),
-        fetchJsonWithRateLimit(closedCountEndpoint)
-      ])
-        .then(function(responses) {
-          var openItems = Array.isArray(responses[0]) ? responses[0] : [];
-          var closedItems = Array.isArray(responses[1]) ? responses[1] : [];
-          var openTotal = responses[2] && typeof responses[2].total_count === 'number' ? responses[2].total_count : openItems.length;
-          var closedTotal = responses[3] && typeof responses[3].total_count === 'number' ? responses[3].total_count : closedItems.length;
-          issuesData = { open: openItems, closed: closedItems };
-          issuesTotals = { open: openTotal, closed: closedTotal };
-          setIssuesTabCounts(openTotal, closedTotal);
-          renderIssuesList(issuesData[issuesActiveTab] || []);
-          updateIssuesCache();
-        })
-        .catch(function(err) {
-          if (issuesCache) {
-            applyIssuesCache();
-            setIssuesMessage('Unable to refresh issues: ' + (err.message || 'Network error') + ' Showing cached results.', true);
-            return;
-          }
-          issuesData = { open: [], closed: [] };
-          issuesTotals = { open: 0, closed: 0 };
-          setIssuesTabCounts(0, 0);
-          setIssuesMessage('Unable to load issues: ' + (err.message || 'Network error'), true);
-          issuesListEl.innerHTML = '';
-        })
-        .finally(function() {
-          issuesFetchInProgress = false;
-          updateLoadMoreButton();
-        });
-    }
-
-    function loadMoreIssues() {
-      if (issuesFetchInProgress) return;
-      if (!canLoadMore(issuesActiveTab)) {
-        updateLoadMoreButton();
-        return;
-      }
-      issuesFetchInProgress = true;
-      updateLoadMoreButton();
-      var nextPage = (issuesPage[issuesActiveTab] || 1) + 1;
-      fetchIssuesPage(issuesActiveTab, nextPage)
-        .then(function(items) {
-          issuesPage[issuesActiveTab] = nextPage;
-          if (items.length > 0) {
-            issuesData[issuesActiveTab] = issuesData[issuesActiveTab].concat(items);
-            renderIssuesList(issuesData[issuesActiveTab]);
-            updateIssuesCache();
-          } else {
-            updateLoadMoreButton();
-          }
-        })
-        .catch(function(err) {
-          setIssuesMessage('Unable to load more issues: ' + (err.message || 'Network error'), true);
-        })
-        .finally(function() {
-          issuesFetchInProgress = false;
-          updateLoadMoreButton();
-        });
-    }
-
-    function openIssuesModal() {
-      if (!issuesBackdrop) return;
-      issuesBackdrop.classList.add('open');
-      issuesBackdrop.setAttribute('aria-hidden', 'false');
-      setIssuesTab('open');
-      if (isIssuesCacheValid()) {
-        applyIssuesCache();
-        return;
-      }
-      issuesData = { open: [], closed: [] };
-      issuesTotals = { open: 0, closed: 0 };
-      issuesPage = { open: 1, closed: 1 };
-      setIssuesTabCounts(0, 0);
-      updateLoadMoreButton();
-      fetchGithubIssues(true);
-    }
-
-    function closeIssuesModal() {
-      if (!issuesBackdrop) return;
-      issuesBackdrop.classList.remove('open');
-      issuesBackdrop.setAttribute('aria-hidden', 'true');
+      });
     }
 
     function escapeHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
@@ -1994,6 +2187,7 @@ function resetChanges() {
     }
 
     setDensity(currentDensity, false);
+    initIssuesPanel();
 
     var densityMenuBtn = document.getElementById('density-menu-btn');
     if (densityMenuBtn) {
@@ -2030,7 +2224,7 @@ function resetChanges() {
         setDensityMenuOpen(false);
         setLegendOpen(false);
         setSafetyOpen(false);
-        closeIssuesModal();
+        if (issuesPanel) issuesPanel.close();
       }
     });
 
@@ -2063,38 +2257,38 @@ function resetChanges() {
     if (issuesButton) {
       issuesButton.addEventListener('click', function(e) {
         e.stopPropagation();
-        openIssuesModal();
+        if (issuesPanel) issuesPanel.open();
       });
     }
     if (issuesBackdrop) {
       var issuesCloseBtn = document.getElementById('issues-close');
       if (issuesCloseBtn) {
         issuesCloseBtn.addEventListener('click', function() {
-          closeIssuesModal();
+          if (issuesPanel) issuesPanel.close();
         });
       }
       issuesBackdrop.addEventListener('click', function(e) {
-        if (e.target === this) closeIssuesModal();
+        if (e.target === this && issuesPanel) issuesPanel.close();
       });
     }
     if (issuesOpenTabEl) {
       issuesOpenTabEl.addEventListener('click', function() {
-        setIssuesTab('open');
+        if (issuesPanel) issuesPanel.setTab('open');
       });
     }
     if (issuesClosedTabEl) {
       issuesClosedTabEl.addEventListener('click', function() {
-        setIssuesTab('closed');
+        if (issuesPanel) issuesPanel.setTab('closed');
       });
     }
     if (issuesLoadMoreBtn) {
       issuesLoadMoreBtn.addEventListener('click', function() {
-        loadMoreIssues();
+        if (issuesPanel) issuesPanel.loadMore();
       });
     }
     if (issuesRefreshBtn) {
       issuesRefreshBtn.addEventListener('click', function() {
-        fetchGithubIssues(true);
+        if (issuesPanel) issuesPanel.refresh();
       });
     }
 
@@ -2241,6 +2435,9 @@ function resetChanges() {
         setDensity(msg.density || 'default', false);
         setFolderBadgeIndicator(!!msg.folderWarningBadgeEnabled, false, false);
         renderStyles();
+        if (issuesPanel) {
+          issuesPanel.setCache(msg.issuesCache);
+        }
       } else if (msg.type === 'styles-updated') {
         allStyles = msg.styles;
         if (msg.savedStyleIds) {

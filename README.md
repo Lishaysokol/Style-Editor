@@ -26,5 +26,6 @@ Figma plugin for quickly browsing paint styles, adjusting colors, and keeping la
 ## Development notes
 - `code.js` talks to the Figma API, tracks drafts, and posts updates back to the UI.
 - `ui.html` renders the master/detail screens, handles keyboard behavior, and wires up the picker controls.
+- The GitHub issues panel logic is inlined inside `ui.html` to keep file count low and work within Figma's UI loading limits.
 - `manifest.json` declares the metadata, entry files, and scope (`figma` editor only).
-- GitHub issues data is fetched from the UI without auth, so refreshes are rate-limited; the panel caches recent results in memory.
+- GitHub issues data is fetched from the UI without auth, so refreshes are rate-limited; the panel caches recent results in clientStorage for a few minutes.
