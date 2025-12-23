@@ -695,7 +695,7 @@
           <div class="safety-tabs" role="tablist" aria-label="Data access sections">
             <button class="safety-tab active" role="tab" aria-selected="true" data-tab="reads">What it reads</button>
             <button class="safety-tab" role="tab" aria-selected="false" data-tab="writes">What it writes</button>
-            <button class="safety-tab" role="tab" aria-selected="false" data-tab="not-does">What it doesn't do</button>
+            <button class="safety-tab" role="tab" aria-selected="false" data-tab="not-does">What it doesn't send</button>
           </div>
           <div class="safety-panels">
             <div class="safety-panel active" role="tabpanel" data-panel="reads">
@@ -717,11 +717,11 @@
             <div class="safety-panel" role="tabpanel" data-panel="not-does">
               <div class="legend-item">
                 <div class="legend-key">Network</div>
-                <div class="legend-desc">Fetches GitHub issues on demand from api.github.com when you open the panel.</div>
+                <div class="legend-desc">When you open the issues panel, the plugin only reads public issue data from api.github.com to show you what’s already posted. It does not send your file contents, styles, variables, or any private information back to GitHub or anywhere else.</div>
               </div>
               <div class="legend-item">
                 <div class="legend-key">Storage</div>
-                <div class="legend-desc">UI prefs and a short-lived issues cache are stored in clientStorage.</div>
+                <div class="legend-desc">Your interface preferences and a short‑lived cache of those public issues are stored locally in clientStorage so the panel loads faster. This storage is only on your device and is not shared, synced, or uploaded.</div>
               </div>
             </div>
           </div>
