@@ -273,6 +273,7 @@
     .issues-backdrop {
       position: fixed;
       inset: 0;
+      padding: 12px;
       background: rgba(0, 0, 0, 0.4);
       display: flex;
       align-items: stretch;
@@ -288,10 +289,10 @@
     }
     .issues-modal {
       width: min(500px, 80vw);
-      height: 100vh;
+      height: calc(100vh - 24px);
       background: var(--figma-color-bg);
       border-left: 1px solid var(--figma-color-border);
-      border-radius: 16px 0 0 16px;
+      border-radius: 16px;
       box-shadow: -18px 0 40px rgba(0, 0, 0, 0.25);
       display: flex;
       flex-direction: column;
@@ -411,33 +412,47 @@
     .issues-title-row {
       display: flex;
       justify-content: space-between;
-      align-items: baseline;
+      align-items: center;
       gap: 8px;
       font-weight: 600;
       font-size: 13px;
+    }
+    .issues-title-main {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .issues-title-text {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .issues-state-icon {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #2da44e;
+    }
+    .issues-state-icon svg {
+      width: 18px;
+      height: 18px;
+      display: block;
+      fill: currentColor;
+    }
+    .issues-state-icon.issues-icon-closed {
+      color: #a371f7;
+    }
+    .issues-state-icon.issues-icon-not-planned {
+      color: #8c959f;
     }
     .issues-number {
       font-size: 11px;
       color: var(--figma-color-text-secondary);
       white-space: nowrap;
-    }
-    .issues-meta-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .issues-state {
-      font-size: 11px;
-      padding: 2px 6px;
-      border-radius: 999px;
-      background: var(--figma-color-bg-brand-tertiary);
-      color: var(--figma-color-text-brand);
-      text-transform: capitalize;
-    }
-    .issues-state.issues-state-closed {
-      background: var(--figma-color-bg-danger-tertiary);
-      color: var(--figma-color-text-danger);
     }
     .issues-labels {
       display: flex;
@@ -994,24 +1009,20 @@
             return;
           }
           var totalForTab = issuesTotals[issuesActiveTab] || 0;
+          var iconOpen = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75A6.25 6.25 0 1 0 14.25 8 6.257 6.257 0 0 0 8 1.75Zm0 11A4.75 4.75 0 1 1 12.75 8 4.755 4.755 0 0 1 8 12.75Z"/><path d="M8 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>';
+          var iconClosed = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75A6.25 6.25 0 1 0 14.25 8 6.257 6.257 0 0 0 8 1.75Zm0 11A4.75 4.75 0 1 1 12.75 8 4.755 4.755 0 0 1 8 12.75Z"/><path d="M11.03 5.47a.75.75 0 0 1 0 1.06L7.78 9.78a.75.75 0 0 1-1.06 0L4.97 8.03a.75.75 0 1 1 1.06-1.06l1.19 1.19 2.72-2.69a.75.75 0 0 1 1.06 0Z"/></svg>';
+          var iconNotPlanned = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.75A6.25 6.25 0 1 0 14.25 8 6.257 6.257 0 0 0 8 1.75Zm0 11A4.75 4.75 0 1 1 12.75 8 4.755 4.755 0 0 1 8 12.75Z"/><path d="M4.47 4.47a.75.75 0 0 1 1.06 0l6 6a.75.75 0 1 1-1.06 1.06l-6-6a.75.75 0 0 1 0-1.06Z"/></svg>';
           var itemsHtml = issues.map(function(issue) {
             var issueTitle = issue && issue.title ? issue.title : 'Untitled issue';
             var issueNumber = typeof issue.number === 'number' ? issue.number : '';
             var issueUrl = issue && issue.html_url ? issue.html_url : '';
             var rawState = issue && issue.state ? issue.state : 'unknown';
-            var stateClass = rawState === 'closed' ? 'issues-state-closed' : 'issues-state-open';
+            var stateReason = issue && issue.state_reason ? issue.state_reason : '';
+            var isNotPlanned = rawState === 'closed' && stateReason === 'not_planned';
+            var iconClass = rawState === 'closed' ? (isNotPlanned ? 'issues-icon-not-planned' : 'issues-icon-closed') : 'issues-icon-open';
+            var iconSvg = rawState === 'closed' ? (isNotPlanned ? iconNotPlanned : iconClosed) : iconOpen;
             var numberHtml = issueNumber ? '#' + issueNumber : '';
-            var labelHtml = '';
-            if (Array.isArray(issue.labels) && issue.labels.length > 0) {
-              var labelsMarkup = issue.labels.map(function(label) {
-                var labelName = label && label.name ? label.name : '';
-                var colorToken = label && label.color ? '#' + label.color : 'transparent';
-                var dotStyle = colorToken ? 'background:' + colorToken + '; border-color:' + colorToken + ';' : '';
-                return '<span class="issues-label" style="border-color:' + colorToken + '"><span class="issues-label-dot" style="' + dotStyle + '"></span>' + escapeHtml(labelName) + '</span>';
-              }).join('');
-              labelHtml = '<div class="issues-labels">' + labelsMarkup + '</div>';
-            }
-            return '<li class="issues-item" tabindex="0" data-url="' + escapeHtml(issueUrl) + '"><div class="issues-title-row"><span>' + escapeHtml(issueTitle) + '</span><span class="issues-number">' + escapeHtml(numberHtml) + '</span></div><div class="issues-meta-row"><span class="issues-state ' + stateClass + '">' + escapeHtml(formatIssueState(rawState)) + '</span>' + labelHtml + '</div></li>';
+            return '<li class="issues-item" tabindex="0" data-url="' + escapeHtml(issueUrl) + '"><div class="issues-title-row"><div class="issues-title-main"><span class="issues-state-icon ' + iconClass + '">' + iconSvg + '</span><span class="issues-title-text">' + escapeHtml(issueTitle) + '</span></div><span class="issues-number">' + escapeHtml(numberHtml) + '</span></div></li>';
           }).join('');
           elements.list.innerHTML = itemsHtml;
           setIssuesMessage('Showing ' + issues.length + ' of ' + totalForTab + ' ' + issuesActiveTab + ' issues from ' + repoOwner + '/' + repoName + '.');
