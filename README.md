@@ -7,6 +7,7 @@ Figma plugin for quickly browsing paint styles, adjusting colors, and keeping la
 - Detail panel for editing each style's layers: new swatches, hex tweaks, opacity, and variable bindings.
 - Save multiple styles at once while drafts are kept per style until you hit **Save**.
 - Folder warning badges in the header.
+- GitHub issues side panel to review open requests and recent fixes without leaving Figma.
 
 ## Usage
 1. Open the plugin in Figma to load the current styles and variables.
@@ -26,3 +27,4 @@ Figma plugin for quickly browsing paint styles, adjusting colors, and keeping la
 - `code.js` talks to the Figma API, tracks drafts, and posts updates back to the UI.
 - `ui.html` renders the master/detail screens, handles keyboard behavior, and wires up the picker controls.
 - `manifest.json` declares the metadata, entry files, and scope (`figma` editor only).
+- GitHub issues data is fetched from the UI without auth, so refreshes are rate-limited; the panel caches recent results in memory.
