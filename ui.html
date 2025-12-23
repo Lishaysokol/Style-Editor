@@ -511,6 +511,8 @@
     var pendingChangesMap = {}; // Track changes per style
     var styleDrafts = {}; // Store draft edits for each style
     var currentDensity = 'default';
+    var focusedItemIndex = -1;
+    var visibleTreeItems = [];
 
     function isValidDensity(density) {
       return density === 'compact' || density === 'default' || density === 'comfortable';
@@ -870,50 +872,204 @@
       return '<div class="style-item ' + (isSelected ? 'selected' : '') + (hasUnsaved ? ' has-changes' : '') + '" data-id="' + style.id + '" role="treeitem" aria-selected="' + isSelected + '" aria-level="' + level + '" tabindex="0">' + unsavedDot + renderSwatchStack(style.paints) + '<div class="style-info"><div class="style-name">' + escapeHtml(style.displayName) + '</div>' + valueHtml + '<div class="style-meta">' + getStyleSummary(style.paints) + issueHtml + '</div></div>' + hoverHexHtml + '</div>';
     }
 
+    function updateVisibleTreeItems() {
+      var container = document.getElementById('styles-list');
+      visibleTreeItems = [];
+      container.querySelectorAll('.folder-header, .style-item').forEach(function(el) {
+        var isHidden = false;
+        var parent = el.closest('.folder-children');
+        while (parent) {
+          if (parent.classList.contains('hidden')) {
+            isHidden = true;
+            break;
+          }
+          parent = parent.parentElement.closest('.folder-children');
+        }
+        if (!isHidden) {
+          visibleTreeItems.push(el);
+        }
+      });
+    }
+
+    function updateRovingTabindex() {
+      visibleTreeItems.forEach(function(el, index) {
+        el.setAttribute('tabindex', index === focusedItemIndex ? '0' : '-1');
+      });
+    }
+
+    function setFocusedItem(index, shouldFocus) {
+      if (index < 0 || index >= visibleTreeItems.length) return;
+      focusedItemIndex = index;
+      updateRovingTabindex();
+      if (shouldFocus && visibleTreeItems[index]) {
+        visibleTreeItems[index].focus();
+        visibleTreeItems[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }
+
+    function handleTreeKeydown(e) {
+      if (!visibleTreeItems.length) return;
+      
+      var currentEl = visibleTreeItems[focusedItemIndex];
+      if (!currentEl) return;
+
+      var isFolder = currentEl.classList.contains('folder-header');
+      var isStyle = currentEl.classList.contains('style-item');
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        updateVisibleTreeItems();
+        var nextIndex = focusedItemIndex + 1;
+        if (nextIndex < visibleTreeItems.length) {
+          setFocusedItem(nextIndex, true);
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        updateVisibleTreeItems();
+        var prevIndex = focusedItemIndex - 1;
+        if (prevIndex >= 0) {
+          setFocusedItem(prevIndex, true);
+        }
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        updateVisibleTreeItems();
+        setFocusedItem(0, true);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        updateVisibleTreeItems();
+        setFocusedItem(visibleTreeItems.length - 1, true);
+      } else if (e.key === 'ArrowRight' && isFolder) {
+        e.preventDefault();
+        var path = currentEl.getAttribute('data-path');
+        var isCollapsed = !!collapsedFolders[path];
+        if (isCollapsed) {
+          collapsedFolders[path] = false;
+          currentEl.classList.remove('collapsed');
+          if (currentEl.nextElementSibling) {
+            currentEl.nextElementSibling.classList.remove('hidden');
+          }
+          currentEl.setAttribute('aria-expanded', 'true');
+          updateVisibleTreeItems();
+          updateRovingTabindex();
+        } else {
+          updateVisibleTreeItems();
+          var nextIndex = focusedItemIndex + 1;
+          if (nextIndex < visibleTreeItems.length) {
+            setFocusedItem(nextIndex, true);
+          }
+        }
+      } else if (e.key === 'ArrowLeft' && isFolder) {
+        e.preventDefault();
+        var path = currentEl.getAttribute('data-path');
+        var isCollapsed = !!collapsedFolders[path];
+        if (!isCollapsed) {
+          collapsedFolders[path] = true;
+          currentEl.classList.add('collapsed');
+          if (currentEl.nextElementSibling) {
+            currentEl.nextElementSibling.classList.add('hidden');
+          }
+          currentEl.setAttribute('aria-expanded', 'false');
+          updateVisibleTreeItems();
+          updateRovingTabindex();
+          currentEl.focus();
+        } else {
+          var parentFolder = currentEl.closest('.folder-children');
+          if (parentFolder) {
+            var parentHeader = parentFolder.previousElementSibling;
+            if (parentHeader && parentHeader.classList.contains('folder-header')) {
+              updateVisibleTreeItems();
+              var parentIndex = visibleTreeItems.indexOf(parentHeader);
+              if (parentIndex >= 0) {
+                setFocusedItem(parentIndex, true);
+              }
+            }
+          }
+        }
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        if (isFolder) {
+          var path = currentEl.getAttribute('data-path');
+          var isCollapsed = !!collapsedFolders[path];
+          collapsedFolders[path] = !isCollapsed;
+          currentEl.classList.toggle('collapsed', !isCollapsed);
+          if (currentEl.nextElementSibling) {
+            currentEl.nextElementSibling.classList.toggle('hidden', !isCollapsed);
+          }
+          currentEl.setAttribute('aria-expanded', String(isCollapsed));
+          updateVisibleTreeItems();
+          updateRovingTabindex();
+        } else if (isStyle) {
+          selectStyle(currentEl.getAttribute('data-id'));
+        }
+      }
+    }
+
     function renderStyles() {
       var container = document.getElementById('styles-list');
       var filtered = allStyles.filter(function(s) { return s.name.toLowerCase().indexOf(searchQuery.toLowerCase()) >= 0; });
       document.getElementById('style-count').textContent = allStyles.length;
-      if (filtered.length === 0) { container.innerHTML = '<div class="empty-state">' + (allStyles.length === 0 ? 'No styles' : 'No matches') + '</div>'; return; }
+      if (filtered.length === 0) { 
+        container.innerHTML = '<div class="empty-state">' + (allStyles.length === 0 ? 'No styles' : 'No matches') + '</div>'; 
+        visibleTreeItems = [];
+        focusedItemIndex = -1;
+        return; 
+      }
+      
+      var focusedId = null;
+      var focusedPath = null;
+      if (focusedItemIndex >= 0 && visibleTreeItems[focusedItemIndex]) {
+        var focusedEl = visibleTreeItems[focusedItemIndex];
+        if (focusedEl.classList.contains('style-item')) {
+          focusedId = focusedEl.getAttribute('data-id');
+        } else if (focusedEl.classList.contains('folder-header')) {
+          focusedPath = focusedEl.getAttribute('data-path');
+        }
+      }
+      
       var tree = buildTree(filtered);
       container.innerHTML = Object.keys(tree.children).sort().map(function(n) { return renderFolder(n, tree.children[n], ''); }).join('') + tree.styles.map(renderStyleItem).join('');
       
+      updateVisibleTreeItems();
+      
+      if (focusedId || focusedPath) {
+        var newIndex = -1;
+        for (var i = 0; i < visibleTreeItems.length; i++) {
+          var el = visibleTreeItems[i];
+          if (focusedId && el.getAttribute('data-id') === focusedId) {
+            newIndex = i;
+            break;
+          } else if (focusedPath && el.getAttribute('data-path') === focusedPath) {
+            newIndex = i;
+            break;
+          }
+        }
+        if (newIndex >= 0) {
+          focusedItemIndex = newIndex;
+        } else if (visibleTreeItems.length > 0) {
+          focusedItemIndex = 0;
+        }
+      } else if (visibleTreeItems.length > 0 && focusedItemIndex < 0) {
+        focusedItemIndex = 0;
+      }
+      
+      updateRovingTabindex();
+      
       container.querySelectorAll('.folder-header').forEach(function(el) {
-        var toggleFolder = function(targetEl, forceExpand) {
-          var path = targetEl.getAttribute('data-path');
-          var isCollapsed = !!collapsedFolders[path];
-          var nextCollapsed = typeof forceExpand === 'boolean' ? !forceExpand : !isCollapsed;
-          collapsedFolders[path] = nextCollapsed;
-          targetEl.classList.toggle('collapsed', nextCollapsed);
-          if (targetEl.nextElementSibling) {
-            targetEl.nextElementSibling.classList.toggle('hidden', nextCollapsed);
-          }
-          targetEl.setAttribute('aria-expanded', String(!nextCollapsed));
-        };
         el.addEventListener('click', function() {
-          toggleFolder(this);
-        });
-        el.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            toggleFolder(this);
-          } else if (e.key === 'ArrowRight') {
-            e.preventDefault();
-            toggleFolder(this, true);
-          } else if (e.key === 'ArrowLeft') {
-            e.preventDefault();
-            toggleFolder(this, false);
+          var path = this.getAttribute('data-path');
+          var isCollapsed = !!collapsedFolders[path];
+          collapsedFolders[path] = !isCollapsed;
+          this.classList.toggle('collapsed', !isCollapsed);
+          if (this.nextElementSibling) {
+            this.nextElementSibling.classList.toggle('hidden', !isCollapsed);
           }
+          this.setAttribute('aria-expanded', String(isCollapsed));
+          updateVisibleTreeItems();
+          updateRovingTabindex();
         });
       });
       container.querySelectorAll('.style-item').forEach(function(el) {
         el.addEventListener('click', function() { selectStyle(this.getAttribute('data-id')); });
-        el.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            selectStyle(this.getAttribute('data-id'));
-          }
-        });
       });
     }
 
@@ -1350,6 +1506,17 @@ function resetChanges() {
         setSafetyOpen(false);
       }
     });
+
+    // Attach keyboard navigation to styles list
+    var stylesListContainer = document.getElementById('styles-list');
+    if (stylesListContainer) {
+      stylesListContainer.addEventListener('keydown', handleTreeKeydown);
+      stylesListContainer.addEventListener('focus', function(e) {
+        if (e.target === this && visibleTreeItems.length > 0 && focusedItemIndex < 0) {
+          setFocusedItem(0, true);
+        }
+      });
+    }
 
     // Event listeners
     document.getElementById('style-search').addEventListener('input', function(e) { searchQuery = e.target.value; renderStyles(); });
