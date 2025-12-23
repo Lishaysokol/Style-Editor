@@ -333,6 +333,13 @@
       color: var(--figma-color-text-secondary);
       margin-top: 2px;
     }
+    .issues-subtitle a {
+      color: var(--figma-color-text-brand);
+      text-decoration: none;
+    }
+    .issues-subtitle a:hover {
+      text-decoration: underline;
+    }
     .issues-body {
       padding: 16px 20px 24px;
       overflow-y: auto;
@@ -453,6 +460,10 @@
       font-size: 11px;
       color: var(--figma-color-text-secondary);
       white-space: nowrap;
+    }
+    .issues-subtitle-row {
+      font-size: 11px;
+      color: var(--figma-color-text-secondary);
     }
     .issues-labels {
       display: flex;
@@ -589,9 +600,8 @@
           </svg>
         </button>
         <button class="btn btn-secondary" id="issues-btn" title="GitHub issues" aria-label="View GitHub issues">
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
-            <path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"></path>
-            <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"></path>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z"></path>
           </svg>
         </button>
       </div>
@@ -724,8 +734,8 @@
     <div class="issues-modal" role="dialog" aria-modal="true" aria-labelledby="issues-title">
       <div class="issues-header">
         <div>
-          <div class="issues-title" id="issues-title">GitHub issues</div>
-          <div class="issues-subtitle">figma/plugin-samples</div>
+          <div class="issues-title" id="issues-title">Feedback and issues tracker</div>
+          <div class="issues-subtitle">GitHub Issues • <a href="https://github.com/Lishaysokol/Style-Editor/issues/new" target="_blank" rel="noopener">Add your feedback</a></div>
         </div>
         <div class="issues-header-actions">
           <button class="btn-icon" id="issues-refresh" aria-label="Refresh issues">
@@ -898,10 +908,6 @@
         var issuesCache = null;
         var isOpen = false;
 
-        if (elements.subtitle) {
-          elements.subtitle.textContent = repoOwner + '/' + repoName;
-        }
-
         function setIssuesMessage(message, isError) {
           if (!elements.status) return;
           elements.status.textContent = message;
@@ -978,6 +984,33 @@
           return state.charAt(0).toUpperCase() + state.slice(1);
         }
 
+        function formatIssueDate(isoString) {
+          if (!isoString) return '';
+          var date = new Date(isoString);
+          if (isNaN(date.getTime())) return '';
+          var now = new Date();
+          var diffMs = now.getTime() - date.getTime();
+          var rtf = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+          var minuteMs = 60 * 1000;
+          var hourMs = 60 * minuteMs;
+          var dayMs = 24 * hourMs;
+          var monthMs = 30 * dayMs;
+          var yearMs = 365 * dayMs;
+          if (diffMs < hourMs) {
+            return rtf.format(-Math.round(diffMs / minuteMs), 'minute');
+          }
+          if (diffMs < dayMs) {
+            return rtf.format(-Math.round(diffMs / hourMs), 'hour');
+          }
+          if (diffMs < monthMs) {
+            return rtf.format(-Math.round(diffMs / dayMs), 'day');
+          }
+          if (diffMs < yearMs) {
+            return rtf.format(-Math.round(diffMs / monthMs), 'month');
+          }
+          return rtf.format(-Math.round(diffMs / yearMs), 'year');
+        }
+
         function openIssueLink(url) {
           if (!url) return;
           try {
@@ -1022,7 +1055,18 @@
             var iconClass = rawState === 'closed' ? (isNotPlanned ? 'issues-icon-not-planned' : 'issues-icon-closed') : 'issues-icon-open';
             var iconSvg = rawState === 'closed' ? (isNotPlanned ? iconNotPlanned : iconClosed) : iconOpen;
             var numberHtml = issueNumber ? '#' + issueNumber : '';
-            return '<li class="issues-item" tabindex="0" data-url="' + escapeHtml(issueUrl) + '"><div class="issues-title-row"><div class="issues-title-main"><span class="issues-state-icon ' + iconClass + '">' + iconSvg + '</span><span class="issues-title-text">' + escapeHtml(issueTitle) + '</span></div><span class="issues-number">' + escapeHtml(numberHtml) + '</span></div></li>';
+            var issueAuthor = issue && issue.user && issue.user.login ? issue.user.login : '';
+            var openedDate = formatIssueDate(issue && issue.created_at ? issue.created_at : '');
+            var closedDate = formatIssueDate(issue && issue.closed_at ? issue.closed_at : '');
+            var metaSentence = '';
+            if (rawState === 'closed') {
+              var closedVerb = isNotPlanned ? 'was closed as not planned' : 'was closed';
+              metaSentence = (issueAuthor ? 'by ' + issueAuthor + ' ' : '') + (closedDate ? closedVerb + ' ' + closedDate : closedVerb);
+            } else {
+              metaSentence = (issueAuthor ? issueAuthor + ' ' : '') + (openedDate ? 'opened ' + openedDate : 'opened');
+            }
+            var metaText = numberHtml ? numberHtml + (metaSentence ? ' · ' + metaSentence : '') : metaSentence;
+            return '<li class="issues-item" tabindex="0" data-url="' + escapeHtml(issueUrl) + '"><div class="issues-title-row"><div class="issues-title-main"><span class="issues-state-icon ' + iconClass + '">' + iconSvg + '</span><span class="issues-title-text">' + escapeHtml(issueTitle) + '</span></div></div><div class="issues-subtitle-row">' + escapeHtml(metaText) + '</div></li>';
           }).join('');
           elements.list.innerHTML = itemsHtml;
           setIssuesMessage('Showing ' + issues.length + ' of ' + totalForTab + ' ' + issuesActiveTab + ' issues from ' + repoOwner + '/' + repoName + '.');
