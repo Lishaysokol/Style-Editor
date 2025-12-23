@@ -270,6 +270,139 @@
     .safety-panel.active { display: block; }
     .safety-panel .legend-item { margin-top: 12px; flex-direction: column; align-items: flex-start; gap: 4px; }
     .safety-panel .legend-key { min-width: 0; }
+    .issues-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 60;
+    }
+    .issues-backdrop.hidden {
+      display: none;
+    }
+    .issues-modal {
+      width: min(520px, 90vw);
+      max-height: 80vh;
+      background: var(--figma-color-bg);
+      border: 1px solid var(--figma-color-border);
+      border-radius: 16px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-direction: column;
+    }
+    .issues-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--figma-color-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .issues-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .issues-subtitle {
+      font-size: 11px;
+      color: var(--figma-color-text-secondary);
+      margin-top: 2px;
+    }
+    .issues-body {
+      padding: 16px 20px;
+      overflow-y: auto;
+    }
+    .issues-status {
+      font-size: 12px;
+      color: var(--figma-color-text-secondary);
+      margin-bottom: 12px;
+    }
+    .issues-status.issues-status-error {
+      color: var(--figma-color-text-danger);
+    }
+    .issues-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 0;
+      margin: 0;
+    }
+    .issues-item {
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--figma-color-bg-secondary);
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      outline: none;
+    }
+    .issues-item:hover {
+      border-color: var(--figma-color-border-brand);
+      background: var(--figma-color-bg);
+    }
+    .issues-item:focus-visible {
+      border-color: var(--figma-color-border-brand);
+      box-shadow: 0 0 0 2px rgba(56, 139, 253, 0.4);
+    }
+    .issues-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .issues-number {
+      font-size: 11px;
+      color: var(--figma-color-text-secondary);
+      white-space: nowrap;
+    }
+    .issues-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .issues-state {
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: var(--figma-color-bg-brand-tertiary);
+      color: var(--figma-color-text-brand);
+      text-transform: capitalize;
+    }
+    .issues-state.issues-state-closed {
+      background: var(--figma-color-bg-danger-tertiary);
+      color: var(--figma-color-text-danger);
+    }
+    .issues-labels {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .issues-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid var(--figma-color-border);
+      border-radius: 999px;
+      padding: 2px 8px;
+      font-size: 11px;
+      color: var(--figma-color-text);
+      background: var(--figma-color-bg);
+    }
+    .issues-label-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      display: inline-block;
+      background: transparent;
+      border: 1px solid rgba(0, 0, 0, 0.1);
+    }
   </style>
 </head>
 <body class="density-default">
@@ -370,6 +503,12 @@
             <path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/>
             <path d="M12 8v5"/>
             <circle cx="12" cy="16" r="1"/>
+          </svg>
+        </button>
+        <button class="btn btn-secondary" id="issues-btn" title="GitHub issues" aria-label="View GitHub issues">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="currentColor">
+            <path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"></path>
+            <path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"></path>
           </svg>
         </button>
       </div>
@@ -498,6 +637,24 @@
     </div>
   </div>
 
+  <div class="issues-backdrop hidden" id="issues-backdrop" aria-hidden="true">
+    <div class="issues-modal" role="dialog" aria-modal="true" aria-labelledby="issues-title">
+      <div class="issues-header">
+        <div>
+          <div class="issues-title" id="issues-title">GitHub issues</div>
+          <div class="issues-subtitle">figma/plugin-samples</div>
+        </div>
+        <button class="btn-icon" id="issues-close" aria-label="Close issues dialog">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="issues-body">
+        <div class="issues-status" id="issues-status">Loading issues...</div>
+        <ul class="issues-list" id="issues-list" role="list" aria-live="polite"></ul>
+      </div>
+    </div>
+  </div>
+
   <script>
     var allStyles = [];
     var allVariables = [];
@@ -513,6 +670,12 @@
     var currentDensity = 'default';
     var focusedItemIndex = -1;
     var visibleTreeItems = [];
+    var issuesRepoOwner = 'figma';
+    var issuesRepoName = 'plugin-samples';
+    var issuesFetchInProgress = false;
+    var issuesBackdrop = document.getElementById('issues-backdrop');
+    var issuesStatusEl = document.getElementById('issues-status');
+    var issuesListEl = document.getElementById('issues-list');
 
     function isValidDensity(density) {
       return density === 'compact' || density === 'default' || density === 'comfortable';
@@ -599,6 +762,108 @@
         var isActive = panel.getAttribute('data-panel') === tabId;
         panel.classList.toggle('active', isActive);
       });
+    }
+
+    function setIssuesMessage(message, isError) {
+      if (!issuesStatusEl) return;
+      issuesStatusEl.textContent = message;
+      issuesStatusEl.classList.toggle('issues-status-error', !!isError);
+    }
+
+    function formatIssueState(state) {
+      if (!state || typeof state !== 'string') return 'Unknown';
+      return state.charAt(0).toUpperCase() + state.slice(1);
+    }
+
+    function openIssueLink(url) {
+      if (!url) return;
+      try {
+        window.open(url, '_blank');
+      } catch (err) {}
+    }
+
+    function attachIssueEvents() {
+      if (!issuesListEl) return;
+      issuesListEl.querySelectorAll('.issues-item').forEach(function(item) {
+        item.addEventListener('click', function() {
+          openIssueLink(this.getAttribute('data-url'));
+        });
+        item.addEventListener('keydown', function(evt) {
+          if (evt.key === 'Enter' || evt.key === ' ') {
+            evt.preventDefault();
+            openIssueLink(this.getAttribute('data-url'));
+          }
+        });
+      });
+    }
+
+    function renderIssuesList(issues) {
+      if (!issuesListEl) return;
+      if (!issues || issues.length === 0) {
+        issuesListEl.innerHTML = '';
+        setIssuesMessage('No issues found for ' + issuesRepoOwner + '/' + issuesRepoName + '.');
+        return;
+      }
+      var itemsHtml = issues.map(function(issue) {
+        var issueTitle = issue && issue.title ? issue.title : 'Untitled issue';
+        var issueNumber = typeof issue.number === 'number' ? issue.number : '';
+        var issueUrl = issue && issue.html_url ? issue.html_url : '';
+        var rawState = issue && issue.state ? issue.state : 'unknown';
+        var stateClass = rawState === 'closed' ? 'issues-state-closed' : 'issues-state-open';
+        var numberHtml = issueNumber ? '#' + issueNumber : '';
+        var labelHtml = '';
+        if (Array.isArray(issue.labels) && issue.labels.length > 0) {
+          var labelsMarkup = issue.labels.map(function(label) {
+            var labelName = label && label.name ? label.name : '';
+            var colorToken = label && label.color ? '#' + label.color : 'transparent';
+            var dotStyle = colorToken ? 'background:' + colorToken + '; border-color:' + colorToken + ';' : '';
+            return '<span class="issues-label" style="border-color:' + colorToken + '"><span class="issues-label-dot" style="' + dotStyle + '"></span>' + escapeHtml(labelName) + '</span>';
+          }).join('');
+          labelHtml = '<div class="issues-labels">' + labelsMarkup + '</div>';
+        }
+        return '<li class="issues-item" tabindex="0" data-url="' + escapeHtml(issueUrl) + '"><div class="issues-title-row"><span>' + escapeHtml(issueTitle) + '</span><span class="issues-number">' + escapeHtml(numberHtml) + '</span></div><div class="issues-meta-row"><span class="issues-state ' + stateClass + '">' + escapeHtml(formatIssueState(rawState)) + '</span>' + labelHtml + '</div></li>';
+      }).join('');
+      issuesListEl.innerHTML = itemsHtml;
+      setIssuesMessage('Showing ' + issues.length + ' recent issues from ' + issuesRepoOwner + '/' + issuesRepoName + '.');
+      attachIssueEvents();
+    }
+
+    function fetchGithubIssues() {
+      if (!issuesBackdrop || !issuesListEl) return;
+      if (issuesFetchInProgress) return;
+      issuesFetchInProgress = true;
+      setIssuesMessage('Loading issues from ' + issuesRepoOwner + '/' + issuesRepoName + '...');
+      issuesListEl.innerHTML = '';
+      var endpoint = 'https://api.github.com/repos/' + issuesRepoOwner + '/' + issuesRepoName + '/issues?per_page=20&state=all';
+      fetch(endpoint, { cache: 'no-store' })
+        .then(function(response) {
+          if (!response.ok) throw new Error('Server returned ' + response.status);
+          return response.json();
+        })
+        .then(function(data) {
+          var items = Array.isArray(data) ? data.filter(function(issue) { return issue && !issue.pull_request; }) : [];
+          renderIssuesList(items);
+        })
+        .catch(function(err) {
+          setIssuesMessage('Unable to load issues: ' + (err.message || 'Network error'), true);
+          issuesListEl.innerHTML = '';
+        })
+        .finally(function() {
+          issuesFetchInProgress = false;
+        });
+    }
+
+    function openIssuesModal() {
+      if (!issuesBackdrop) return;
+      issuesBackdrop.classList.remove('hidden');
+      issuesBackdrop.setAttribute('aria-hidden', 'false');
+      fetchGithubIssues();
+    }
+
+    function closeIssuesModal() {
+      if (!issuesBackdrop) return;
+      issuesBackdrop.classList.add('hidden');
+      issuesBackdrop.setAttribute('aria-hidden', 'true');
     }
 
     function escapeHtml(str) { if (!str) return ''; var div = document.createElement('div'); div.textContent = str; return div.innerHTML; }
@@ -1504,6 +1769,7 @@ function resetChanges() {
         setDensityMenuOpen(false);
         setLegendOpen(false);
         setSafetyOpen(false);
+        closeIssuesModal();
       }
     });
 
@@ -1531,6 +1797,25 @@ function resetChanges() {
     document.getElementById('safety-btn').addEventListener('click', function() { setSafetyOpen(true); });
     document.getElementById('safety-close').addEventListener('click', function() { setSafetyOpen(false); });
     document.getElementById('safety-backdrop').addEventListener('click', function(e) { if (e.target === this) setSafetyOpen(false); });
+
+    var issuesButton = document.getElementById('issues-btn');
+    if (issuesButton) {
+      issuesButton.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openIssuesModal();
+      });
+    }
+    if (issuesBackdrop) {
+      var issuesCloseBtn = document.getElementById('issues-close');
+      if (issuesCloseBtn) {
+        issuesCloseBtn.addEventListener('click', function() {
+          closeIssuesModal();
+        });
+      }
+      issuesBackdrop.addEventListener('click', function(e) {
+        if (e.target === this) closeIssuesModal();
+      });
+    }
 
     document.querySelectorAll('.safety-tab').forEach(function(tab) {
       tab.addEventListener('click', function() {
