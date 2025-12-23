@@ -309,6 +309,20 @@
       justify-content: space-between;
       gap: 12px;
     }
+    .issues-header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .issues-header-actions .btn {
+      min-height: 32px;
+      padding: 4px 12px;
+      border-radius: 8px;
+    }
+    .issues-header-actions .btn-icon {
+      width: 32px;
+      height: 32px;
+    }
     .issues-title {
       font-size: 14px;
       font-weight: 600;
@@ -698,9 +712,12 @@
           <div class="issues-title" id="issues-title">GitHub issues</div>
           <div class="issues-subtitle">figma/plugin-samples</div>
         </div>
-        <button class="btn-icon" id="issues-close" aria-label="Close issues dialog">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-        </button>
+        <div class="issues-header-actions">
+          <button class="btn-icon" id="issues-refresh" aria-label="Refresh issues">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-2.2-5.9M21 3v6h-6"/></svg>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="issues-close" aria-label="Close issues panel">Close</button>
+        </div>
       </div>
       <div class="issues-body">
         <div class="issues-tabs" role="tablist" aria-label="Issue states">
@@ -740,6 +757,7 @@
     var issuesStatusEl = document.getElementById('issues-status');
     var issuesListEl = document.getElementById('issues-list');
     var issuesLoadMoreBtn = document.getElementById('issues-load-more');
+    var issuesRefreshBtn = document.getElementById('issues-refresh');
     var issuesOpenCountEl = document.getElementById('issues-open-count');
     var issuesClosedCountEl = document.getElementById('issues-closed-count');
     var issuesOpenTabEl = document.getElementById('issues-tab-open');
@@ -749,6 +767,8 @@
     var issuesTotals = { open: 0, closed: 0 };
     var issuesPerPage = 10;
     var issuesPage = { open: 1, closed: 1 };
+    var issuesCache = null;
+    var issuesCacheTTL = 3 * 60 * 1000;
 
     function isValidDensity(density) {
       return density === 'compact' || density === 'default' || density === 'comfortable';
@@ -872,6 +892,59 @@
       renderIssuesList(issuesData[issuesActiveTab] || []);
     }
 
+    function formatRateLimitReset(resetSeconds) {
+      if (!resetSeconds || isNaN(resetSeconds)) return null;
+      var date = new Date(resetSeconds * 1000);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function buildRateLimitError(response) {
+      var resetHeader = response.headers.get('x-ratelimit-reset');
+      var resetSeconds = resetHeader ? parseInt(resetHeader, 10) : null;
+      var resetTime = formatRateLimitReset(resetSeconds);
+      var message = 'Rate limit reached. Try again' + (resetTime ? ' at ' + resetTime : ' later') + '.';
+      var error = new Error(message);
+      error.isRateLimit = true;
+      return error;
+    }
+
+    function fetchJsonWithRateLimit(url) {
+      return fetch(url, { cache: 'no-store' })
+        .then(function(response) {
+          if (response.ok) return response.json();
+          if (response.status === 403) throw buildRateLimitError(response);
+          throw new Error('Server returned ' + response.status);
+        });
+    }
+
+    function isIssuesCacheValid() {
+      return issuesCache && (Date.now() - issuesCache.timestamp < issuesCacheTTL);
+    }
+
+    function applyIssuesCache() {
+      if (!issuesCache) return;
+      issuesData = {
+        open: issuesCache.data.open.slice(),
+        closed: issuesCache.data.closed.slice()
+      };
+      issuesTotals = { open: issuesCache.totals.open, closed: issuesCache.totals.closed };
+      issuesPage = { open: issuesCache.page.open, closed: issuesCache.page.closed };
+      setIssuesTabCounts(issuesTotals.open, issuesTotals.closed);
+      renderIssuesList(issuesData[issuesActiveTab] || []);
+    }
+
+    function updateIssuesCache() {
+      issuesCache = {
+        data: {
+          open: issuesData.open.slice(),
+          closed: issuesData.closed.slice()
+        },
+        totals: { open: issuesTotals.open, closed: issuesTotals.closed },
+        page: { open: issuesPage.open, closed: issuesPage.closed },
+        timestamp: Date.now()
+      };
+    }
+
     function canLoadMore(tabId) {
       return (issuesData[tabId] || []).length < (issuesTotals[tabId] || 0);
     }
@@ -886,11 +959,7 @@
 
     function fetchIssuesPage(state, page) {
       var endpoint = 'https://api.github.com/repos/' + issuesRepoOwner + '/' + issuesRepoName + '/issues?per_page=' + issuesPerPage + '&state=' + state + '&sort=created&direction=desc&page=' + page;
-      return fetch(endpoint, { cache: 'no-store' })
-        .then(function(response) {
-          if (!response.ok) throw new Error('Server returned ' + response.status);
-          return response.json();
-        })
+      return fetchJsonWithRateLimit(endpoint)
         .then(function(data) {
           return Array.isArray(data) ? data.filter(function(issue) { return issue && !issue.pull_request; }) : [];
         });
@@ -957,9 +1026,13 @@
       updateLoadMoreButton();
     }
 
-    function fetchGithubIssues() {
+    function fetchGithubIssues(forceRefresh) {
       if (!issuesBackdrop || !issuesListEl) return;
       if (issuesFetchInProgress) return;
+      if (!forceRefresh && isIssuesCacheValid()) {
+        applyIssuesCache();
+        return;
+      }
       issuesFetchInProgress = true;
       setIssuesMessage('Loading issues from ' + issuesRepoOwner + '/' + issuesRepoName + '...');
       issuesListEl.innerHTML = '';
@@ -970,28 +1043,26 @@
       Promise.all([
         fetchIssuesPage('open', issuesPage.open),
         fetchIssuesPage('closed', issuesPage.closed),
-        fetch(openCountEndpoint, { cache: 'no-store' }),
-        fetch(closedCountEndpoint, { cache: 'no-store' })
+        fetchJsonWithRateLimit(openCountEndpoint),
+        fetchJsonWithRateLimit(closedCountEndpoint)
       ])
         .then(function(responses) {
-          return Promise.all([
-            Promise.resolve(responses[0]),
-            Promise.resolve(responses[1]),
-            responses[2].ok ? responses[2].json() : Promise.reject(new Error('Server returned ' + responses[2].status)),
-            responses[3].ok ? responses[3].json() : Promise.reject(new Error('Server returned ' + responses[3].status))
-          ]);
-        })
-        .then(function(dataSets) {
-          var openItems = Array.isArray(dataSets[0]) ? dataSets[0] : [];
-          var closedItems = Array.isArray(dataSets[1]) ? dataSets[1] : [];
-          var openTotal = dataSets[2] && typeof dataSets[2].total_count === 'number' ? dataSets[2].total_count : openItems.length;
-          var closedTotal = dataSets[3] && typeof dataSets[3].total_count === 'number' ? dataSets[3].total_count : closedItems.length;
+          var openItems = Array.isArray(responses[0]) ? responses[0] : [];
+          var closedItems = Array.isArray(responses[1]) ? responses[1] : [];
+          var openTotal = responses[2] && typeof responses[2].total_count === 'number' ? responses[2].total_count : openItems.length;
+          var closedTotal = responses[3] && typeof responses[3].total_count === 'number' ? responses[3].total_count : closedItems.length;
           issuesData = { open: openItems, closed: closedItems };
           issuesTotals = { open: openTotal, closed: closedTotal };
           setIssuesTabCounts(openTotal, closedTotal);
           renderIssuesList(issuesData[issuesActiveTab] || []);
+          updateIssuesCache();
         })
         .catch(function(err) {
+          if (issuesCache) {
+            applyIssuesCache();
+            setIssuesMessage('Unable to refresh issues: ' + (err.message || 'Network error') + ' Showing cached results.', true);
+            return;
+          }
           issuesData = { open: [], closed: [] };
           issuesTotals = { open: 0, closed: 0 };
           setIssuesTabCounts(0, 0);
@@ -1019,6 +1090,7 @@
           if (items.length > 0) {
             issuesData[issuesActiveTab] = issuesData[issuesActiveTab].concat(items);
             renderIssuesList(issuesData[issuesActiveTab]);
+            updateIssuesCache();
           } else {
             updateLoadMoreButton();
           }
@@ -1037,12 +1109,16 @@
       issuesBackdrop.classList.add('open');
       issuesBackdrop.setAttribute('aria-hidden', 'false');
       setIssuesTab('open');
+      if (isIssuesCacheValid()) {
+        applyIssuesCache();
+        return;
+      }
       issuesData = { open: [], closed: [] };
       issuesTotals = { open: 0, closed: 0 };
       issuesPage = { open: 1, closed: 1 };
       setIssuesTabCounts(0, 0);
       updateLoadMoreButton();
-      fetchGithubIssues();
+      fetchGithubIssues(true);
     }
 
     function closeIssuesModal() {
@@ -2014,6 +2090,11 @@ function resetChanges() {
     if (issuesLoadMoreBtn) {
       issuesLoadMoreBtn.addEventListener('click', function() {
         loadMoreIssues();
+      });
+    }
+    if (issuesRefreshBtn) {
+      issuesRefreshBtn.addEventListener('click', function() {
+        fetchGithubIssues(true);
       });
     }
 
