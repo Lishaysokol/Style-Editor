@@ -313,6 +313,42 @@
       padding: 16px 20px;
       overflow-y: auto;
     }
+    .issues-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px;
+      border-radius: 999px;
+      background: var(--figma-color-bg-secondary);
+      margin-bottom: 12px;
+    }
+    .issues-tab {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--figma-color-text-secondary);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .issues-tab.active {
+      background: var(--figma-color-bg);
+      color: var(--figma-color-text);
+      border-color: var(--figma-color-border);
+    }
+    .issues-tab-count {
+      background: var(--figma-color-bg-tertiary);
+      color: var(--figma-color-text-secondary);
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      min-width: 20px;
+      text-align: center;
+    }
     .issues-status {
       font-size: 12px;
       color: var(--figma-color-text-secondary);
@@ -402,6 +438,14 @@
       display: inline-block;
       background: transparent;
       border: 1px solid rgba(0, 0, 0, 0.1);
+    }
+    .issues-load-more {
+      margin-top: 12px;
+      width: 100%;
+      justify-content: center;
+    }
+    .issues-load-more.hidden {
+      display: none;
     }
   </style>
 </head>
@@ -649,8 +693,17 @@
         </button>
       </div>
       <div class="issues-body">
+        <div class="issues-tabs" role="tablist" aria-label="Issue states">
+          <button class="issues-tab active" id="issues-tab-open" role="tab" aria-selected="true" data-tab="open">
+            Open <span class="issues-tab-count" id="issues-open-count">0</span>
+          </button>
+          <button class="issues-tab" id="issues-tab-closed" role="tab" aria-selected="false" data-tab="closed">
+            Closed <span class="issues-tab-count" id="issues-closed-count">0</span>
+          </button>
+        </div>
         <div class="issues-status" id="issues-status">Loading issues...</div>
         <ul class="issues-list" id="issues-list" role="list" aria-live="polite"></ul>
+        <button class="btn btn-secondary issues-load-more hidden" id="issues-load-more" type="button">Load more</button>
       </div>
     </div>
   </div>
@@ -676,6 +729,16 @@
     var issuesBackdrop = document.getElementById('issues-backdrop');
     var issuesStatusEl = document.getElementById('issues-status');
     var issuesListEl = document.getElementById('issues-list');
+    var issuesLoadMoreBtn = document.getElementById('issues-load-more');
+    var issuesOpenCountEl = document.getElementById('issues-open-count');
+    var issuesClosedCountEl = document.getElementById('issues-closed-count');
+    var issuesOpenTabEl = document.getElementById('issues-tab-open');
+    var issuesClosedTabEl = document.getElementById('issues-tab-closed');
+    var issuesData = { open: [], closed: [] };
+    var issuesActiveTab = 'open';
+    var issuesTotals = { open: 0, closed: 0 };
+    var issuesPerPage = 10;
+    var issuesPage = { open: 1, closed: 1 };
 
     function isValidDensity(density) {
       return density === 'compact' || density === 'default' || density === 'comfortable';
@@ -770,6 +833,59 @@
       issuesStatusEl.classList.toggle('issues-status-error', !!isError);
     }
 
+    function setIssuesTabCounts(openCount, closedCount) {
+      if (issuesOpenCountEl) issuesOpenCountEl.textContent = String(openCount || 0);
+      if (issuesClosedCountEl) issuesClosedCountEl.textContent = String(closedCount || 0);
+    }
+
+    function setIssuesTab(tabId) {
+      if (tabId !== 'open' && tabId !== 'closed') return;
+      issuesActiveTab = tabId;
+      if (issuesOpenTabEl) {
+        var isOpen = tabId === 'open';
+        issuesOpenTabEl.classList.toggle('active', isOpen);
+        issuesOpenTabEl.setAttribute('aria-selected', isOpen ? 'true' : 'false');
+      }
+      if (issuesClosedTabEl) {
+        var isClosed = tabId === 'closed';
+        issuesClosedTabEl.classList.toggle('active', isClosed);
+        issuesClosedTabEl.setAttribute('aria-selected', isClosed ? 'true' : 'false');
+      }
+      if (issuesFetchInProgress) {
+        updateLoadMoreButton();
+        return;
+      }
+      if (issuesData.open.length === 0 && issuesData.closed.length === 0) {
+        updateLoadMoreButton();
+        return;
+      }
+      renderIssuesList(issuesData[issuesActiveTab] || []);
+    }
+
+    function canLoadMore(tabId) {
+      return (issuesData[tabId] || []).length < (issuesTotals[tabId] || 0);
+    }
+
+    function updateLoadMoreButton() {
+      if (!issuesLoadMoreBtn) return;
+      var showButton = canLoadMore(issuesActiveTab);
+      issuesLoadMoreBtn.classList.toggle('hidden', !showButton);
+      issuesLoadMoreBtn.disabled = issuesFetchInProgress || !showButton;
+      issuesLoadMoreBtn.textContent = issuesFetchInProgress ? 'Loading...' : 'Load more';
+    }
+
+    function fetchIssuesPage(state, page) {
+      var endpoint = 'https://api.github.com/repos/' + issuesRepoOwner + '/' + issuesRepoName + '/issues?per_page=' + issuesPerPage + '&state=' + state + '&sort=created&direction=desc&page=' + page;
+      return fetch(endpoint, { cache: 'no-store' })
+        .then(function(response) {
+          if (!response.ok) throw new Error('Server returned ' + response.status);
+          return response.json();
+        })
+        .then(function(data) {
+          return Array.isArray(data) ? data.filter(function(issue) { return issue && !issue.pull_request; }) : [];
+        });
+    }
+
     function formatIssueState(state) {
       if (!state || typeof state !== 'string') return 'Unknown';
       return state.charAt(0).toUpperCase() + state.slice(1);
@@ -801,9 +917,11 @@
       if (!issuesListEl) return;
       if (!issues || issues.length === 0) {
         issuesListEl.innerHTML = '';
-        setIssuesMessage('No issues found for ' + issuesRepoOwner + '/' + issuesRepoName + '.');
+        setIssuesMessage('No ' + issuesActiveTab + ' issues found for ' + issuesRepoOwner + '/' + issuesRepoName + '.');
+        updateLoadMoreButton();
         return;
       }
+      var totalForTab = issuesTotals[issuesActiveTab] || 0;
       var itemsHtml = issues.map(function(issue) {
         var issueTitle = issue && issue.title ? issue.title : 'Untitled issue';
         var issueNumber = typeof issue.number === 'number' ? issue.number : '';
@@ -824,8 +942,9 @@
         return '<li class="issues-item" tabindex="0" data-url="' + escapeHtml(issueUrl) + '"><div class="issues-title-row"><span>' + escapeHtml(issueTitle) + '</span><span class="issues-number">' + escapeHtml(numberHtml) + '</span></div><div class="issues-meta-row"><span class="issues-state ' + stateClass + '">' + escapeHtml(formatIssueState(rawState)) + '</span>' + labelHtml + '</div></li>';
       }).join('');
       issuesListEl.innerHTML = itemsHtml;
-      setIssuesMessage('Showing ' + issues.length + ' recent issues from ' + issuesRepoOwner + '/' + issuesRepoName + '.');
+      setIssuesMessage('Showing ' + issues.length + ' of ' + totalForTab + ' ' + issuesActiveTab + ' issues from ' + issuesRepoOwner + '/' + issuesRepoName + '.');
       attachIssueEvents();
+      updateLoadMoreButton();
     }
 
     function fetchGithubIssues() {
@@ -834,22 +953,72 @@
       issuesFetchInProgress = true;
       setIssuesMessage('Loading issues from ' + issuesRepoOwner + '/' + issuesRepoName + '...');
       issuesListEl.innerHTML = '';
-      var endpoint = 'https://api.github.com/repos/' + issuesRepoOwner + '/' + issuesRepoName + '/issues?per_page=20&state=all';
-      fetch(endpoint, { cache: 'no-store' })
-        .then(function(response) {
-          if (!response.ok) throw new Error('Server returned ' + response.status);
-          return response.json();
+      updateLoadMoreButton();
+      issuesPage = { open: 1, closed: 1 };
+      var openCountEndpoint = 'https://api.github.com/search/issues?q=repo:' + issuesRepoOwner + '/' + issuesRepoName + '+type:issue+state:open&per_page=1';
+      var closedCountEndpoint = 'https://api.github.com/search/issues?q=repo:' + issuesRepoOwner + '/' + issuesRepoName + '+type:issue+state:closed&per_page=1';
+      Promise.all([
+        fetchIssuesPage('open', issuesPage.open),
+        fetchIssuesPage('closed', issuesPage.closed),
+        fetch(openCountEndpoint, { cache: 'no-store' }),
+        fetch(closedCountEndpoint, { cache: 'no-store' })
+      ])
+        .then(function(responses) {
+          return Promise.all([
+            Promise.resolve(responses[0]),
+            Promise.resolve(responses[1]),
+            responses[2].ok ? responses[2].json() : Promise.reject(new Error('Server returned ' + responses[2].status)),
+            responses[3].ok ? responses[3].json() : Promise.reject(new Error('Server returned ' + responses[3].status))
+          ]);
         })
-        .then(function(data) {
-          var items = Array.isArray(data) ? data.filter(function(issue) { return issue && !issue.pull_request; }) : [];
-          renderIssuesList(items);
+        .then(function(dataSets) {
+          var openItems = Array.isArray(dataSets[0]) ? dataSets[0] : [];
+          var closedItems = Array.isArray(dataSets[1]) ? dataSets[1] : [];
+          var openTotal = dataSets[2] && typeof dataSets[2].total_count === 'number' ? dataSets[2].total_count : openItems.length;
+          var closedTotal = dataSets[3] && typeof dataSets[3].total_count === 'number' ? dataSets[3].total_count : closedItems.length;
+          issuesData = { open: openItems, closed: closedItems };
+          issuesTotals = { open: openTotal, closed: closedTotal };
+          setIssuesTabCounts(openTotal, closedTotal);
+          renderIssuesList(issuesData[issuesActiveTab] || []);
         })
         .catch(function(err) {
+          issuesData = { open: [], closed: [] };
+          issuesTotals = { open: 0, closed: 0 };
+          setIssuesTabCounts(0, 0);
           setIssuesMessage('Unable to load issues: ' + (err.message || 'Network error'), true);
           issuesListEl.innerHTML = '';
         })
         .finally(function() {
           issuesFetchInProgress = false;
+          updateLoadMoreButton();
+        });
+    }
+
+    function loadMoreIssues() {
+      if (issuesFetchInProgress) return;
+      if (!canLoadMore(issuesActiveTab)) {
+        updateLoadMoreButton();
+        return;
+      }
+      issuesFetchInProgress = true;
+      updateLoadMoreButton();
+      var nextPage = (issuesPage[issuesActiveTab] || 1) + 1;
+      fetchIssuesPage(issuesActiveTab, nextPage)
+        .then(function(items) {
+          issuesPage[issuesActiveTab] = nextPage;
+          if (items.length > 0) {
+            issuesData[issuesActiveTab] = issuesData[issuesActiveTab].concat(items);
+            renderIssuesList(issuesData[issuesActiveTab]);
+          } else {
+            updateLoadMoreButton();
+          }
+        })
+        .catch(function(err) {
+          setIssuesMessage('Unable to load more issues: ' + (err.message || 'Network error'), true);
+        })
+        .finally(function() {
+          issuesFetchInProgress = false;
+          updateLoadMoreButton();
         });
     }
 
@@ -857,6 +1026,12 @@
       if (!issuesBackdrop) return;
       issuesBackdrop.classList.remove('hidden');
       issuesBackdrop.setAttribute('aria-hidden', 'false');
+      setIssuesTab('open');
+      issuesData = { open: [], closed: [] };
+      issuesTotals = { open: 0, closed: 0 };
+      issuesPage = { open: 1, closed: 1 };
+      setIssuesTabCounts(0, 0);
+      updateLoadMoreButton();
       fetchGithubIssues();
     }
 
@@ -1814,6 +1989,21 @@ function resetChanges() {
       }
       issuesBackdrop.addEventListener('click', function(e) {
         if (e.target === this) closeIssuesModal();
+      });
+    }
+    if (issuesOpenTabEl) {
+      issuesOpenTabEl.addEventListener('click', function() {
+        setIssuesTab('open');
+      });
+    }
+    if (issuesClosedTabEl) {
+      issuesClosedTabEl.addEventListener('click', function() {
+        setIssuesTab('closed');
+      });
+    }
+    if (issuesLoadMoreBtn) {
+      issuesLoadMoreBtn.addEventListener('click', function() {
+        loadMoreIssues();
       });
     }
 
