@@ -273,24 +273,33 @@
     .issues-backdrop {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(0, 0, 0, 0.4);
       display: flex;
-      align-items: center;
-      justify-content: center;
+      align-items: stretch;
+      justify-content: flex-end;
       z-index: 60;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
     }
-    .issues-backdrop.hidden {
-      display: none;
+    .issues-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
     }
     .issues-modal {
-      width: min(520px, 90vw);
-      max-height: 80vh;
+      width: min(500px, 80vw);
+      height: 100vh;
       background: var(--figma-color-bg);
-      border: 1px solid var(--figma-color-border);
-      border-radius: 16px;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.25);
+      border-left: 1px solid var(--figma-color-border);
+      border-radius: 16px 0 0 16px;
+      box-shadow: -18px 0 40px rgba(0, 0, 0, 0.25);
       display: flex;
       flex-direction: column;
+      transform: translateX(100%);
+      transition: transform 0.2s ease;
+    }
+    .issues-backdrop.open .issues-modal {
+      transform: translateX(0);
     }
     .issues-header {
       padding: 14px 20px;
@@ -310,8 +319,9 @@
       margin-top: 2px;
     }
     .issues-body {
-      padding: 16px 20px;
+      padding: 16px 20px 24px;
       overflow-y: auto;
+      flex: 1;
     }
     .issues-tabs {
       display: inline-flex;
@@ -681,7 +691,7 @@
     </div>
   </div>
 
-  <div class="issues-backdrop hidden" id="issues-backdrop" aria-hidden="true">
+  <div class="issues-backdrop" id="issues-backdrop" aria-hidden="true">
     <div class="issues-modal" role="dialog" aria-modal="true" aria-labelledby="issues-title">
       <div class="issues-header">
         <div>
@@ -1024,7 +1034,7 @@
 
     function openIssuesModal() {
       if (!issuesBackdrop) return;
-      issuesBackdrop.classList.remove('hidden');
+      issuesBackdrop.classList.add('open');
       issuesBackdrop.setAttribute('aria-hidden', 'false');
       setIssuesTab('open');
       issuesData = { open: [], closed: [] };
@@ -1037,7 +1047,7 @@
 
     function closeIssuesModal() {
       if (!issuesBackdrop) return;
-      issuesBackdrop.classList.add('hidden');
+      issuesBackdrop.classList.remove('open');
       issuesBackdrop.setAttribute('aria-hidden', 'true');
     }
 
